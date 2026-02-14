@@ -3,6 +3,7 @@
 <p align="center">
 <img src="https://lh3.googleusercontent.com/u/0/d/1UpvuvLZFYagXFWX23WueKyBAzzaFXHX5" alt="Anchor Logo" width="200"/>
 </p>
+
 ### **Digital content. Physical locations. Right place, right time.**
 
 Anchor is a context-aware sharing platform that binds data to the real world. Unlike generic cloud drives, Anchor ensures your files, links, and messages are only accessible when a user is physically present at the source.
