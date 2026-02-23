@@ -1,8 +1,11 @@
 """
 US5 #1 — Anchor Creation API
+US9 #1 — Anchor Edit and Delete API
 
 Endpoints:
-    POST /anchors  — create a new Anchor tied to a location
+    POST   /anchors             — create a new Anchor tied to a location
+    PATCH  /anchors/{anchor_id} — update an existing Anchor (owner only)
+    DELETE /anchors/{anchor_id} — delete an Anchor (owner only)
 """
 
 import json
@@ -14,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user_id
-from app.schemas.anchor import CreateAnchorRequest, AnchorResponse
+from app.schemas.anchor import CreateAnchorRequest, UpdateAnchorRequest, AnchorResponse
 
 router = APIRouter(prefix="/anchors", tags=["Anchors"])
 
@@ -112,3 +115,113 @@ def create_anchor(
 
     row = _get_anchor_by_id(db, anchor_id)
     return _row_to_response(row)
+
+
+# ── Update Anchor ─────────────────────────────────────────────────────────────
+
+@router.patch("/{anchor_id}", response_model=AnchorResponse)
+def update_anchor(
+    anchor_id: str,
+    payload: UpdateAnchorRequest,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Update an existing Anchor. Only the creator can edit.
+    Only provided (non-None) fields are updated.
+    """
+    row = _get_anchor_by_id(db, anchor_id)
+    if not row:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Anchor not found",
+        )
+    if row.creator_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to edit this Anchor",
+        )
+
+    if payload.visibility is not None and payload.visibility not in (
+        "PUBLIC", "PRIVATE", "CIRCLE_ONLY",
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="visibility must be PUBLIC, PRIVATE, or CIRCLE_ONLY",
+        )
+
+    # Build dynamic SET clause from provided fields
+    fields = {}
+    if payload.title is not None:
+        fields["title"] = payload.title
+    if payload.description is not None:
+        fields["description"] = payload.description
+    if payload.visibility is not None:
+        fields["visibility"] = payload.visibility
+    if payload.unlock_radius is not None:
+        fields["unlock_radius"] = payload.unlock_radius
+    if payload.max_unlock is not None:
+        fields["max_unlock"] = payload.max_unlock
+    if payload.altitude is not None:
+        fields["altitude"] = payload.altitude
+    if payload.activation_time is not None:
+        fields["activation_time"] = payload.activation_time
+    if payload.expiration_time is not None:
+        fields["expiration_time"] = payload.expiration_time
+    if payload.tags is not None:
+        fields["tags"] = json.dumps(payload.tags)
+
+    # Handle location update — need both lat and lon together
+    location_update = ""
+    if payload.latitude is not None or payload.longitude is not None:
+        new_lat = payload.latitude if payload.latitude is not None else row.latitude
+        new_lon = payload.longitude if payload.longitude is not None else row.longitude
+        location_update = f", location = ST_GeomFromText('POINT({new_lon} {new_lat})', 4326)"
+
+    if fields or location_update:
+        set_clause = ", ".join(f"{k} = :{k}" for k in fields)
+        if set_clause and location_update:
+            set_clause += location_update
+        elif location_update:
+            set_clause = location_update.lstrip(", ")
+
+        fields["anchor_id"] = anchor_id
+        db.execute(
+            text(f"UPDATE anchors SET {set_clause} WHERE anchor_id = :anchor_id"),
+            fields,
+        )
+        db.commit()
+
+    updated = _get_anchor_by_id(db, anchor_id)
+    return _row_to_response(updated)
+
+
+# ── Delete Anchor ─────────────────────────────────────────────────────────────
+
+@router.delete("/{anchor_id}", status_code=status.HTTP_200_OK)
+def delete_anchor(
+    anchor_id: str,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Delete an Anchor. Only the creator can delete.
+    """
+    row = _get_anchor_by_id(db, anchor_id)
+    if not row:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Anchor not found",
+        )
+    if row.creator_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to delete this Anchor",
+        )
+
+    db.execute(
+        text("DELETE FROM anchors WHERE anchor_id = :anchor_id"),
+        {"anchor_id": anchor_id},
+    )
+    db.commit()
+    return {"message": "Anchor deleted successfully"}
