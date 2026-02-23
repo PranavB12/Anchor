@@ -1,4 +1,8 @@
-const API_BASE_URL = "http://127.0.0.1:8000";
+import { Platform } from "react-native";
+
+// Android emulators cannot reach the host machine via 127.0.0.1.
+const API_BASE_URL =
+  Platform.OS === "android" ? "http://10.0.2.2:8000" : "http://127.0.0.1:8000";
 
 type HttpMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 

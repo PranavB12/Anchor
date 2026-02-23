@@ -15,16 +15,19 @@ import {
 } from "react-native";
 
 import type { RootStackParamList } from "../navigation/AppNavigator";
+import { useAuth } from "../context/AuthContext";
 import { login } from "../services/authService";
 import AnchorLogo from "../../assets/anchor-logo.svg";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Login">;
 
 export default function LoginScreen({ navigation }: Props) {
+  const { signIn, status, session, signOut } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleLogin = async () => {
@@ -33,14 +36,18 @@ export default function LoginScreen({ navigation }: Props) {
 
     if (!trimmedEmail || !password) {
       setError("Enter your email and password.");
+      setSuccessMessage(null);
       return;
     }
 
     setError(null);
+    setSuccessMessage(null);
     setIsSubmitting(true);
 
     try {
       const result = await login({ email: trimmedEmail, password });
+      await signIn(result);
+      setSuccessMessage(`Login successful. Welcome back, ${result.username}.`);
       Alert.alert("Signed in", `Welcome back, ${result.username}.`);
       // Next step: persist tokens and navigate to the authenticated app flow.
     } catch (err) {
@@ -70,6 +77,17 @@ export default function LoginScreen({ navigation }: Props) {
         </View>
 
         <View style={styles.card}>
+          {status === "authenticated" && session ? (
+            <View style={styles.activeSessionBanner}>
+              <Text style={styles.activeSessionText}>
+                Session active for {session.username}
+              </Text>
+              <Pressable onPress={() => void signOut()}>
+                <Text style={styles.activeSessionLink}>Sign out</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
           <Text style={styles.label}>Email</Text>
           <TextInput
             autoCapitalize="none"
@@ -107,6 +125,9 @@ export default function LoginScreen({ navigation }: Props) {
           </View>
 
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
+          {successMessage ? (
+            <Text style={styles.successText}>{successMessage}</Text>
+          ) : null}
 
           <Pressable
             disabled={isSubmitting}
@@ -160,6 +181,7 @@ const colors = {
   border: "#f2d9bf",
   white: "#ffffff",
   error: "#b42318",
+  success: "#027a48",
 };
 
 const styles = StyleSheet.create({
@@ -236,6 +258,36 @@ const styles = StyleSheet.create({
   errorText: {
     marginTop: 10,
     color: colors.error,
+    fontSize: 13,
+  },
+  successText: {
+    marginTop: 10,
+    color: colors.success,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  activeSessionBanner: {
+    marginBottom: 10,
+    backgroundColor: "#ecfdf3",
+    borderWidth: 1,
+    borderColor: "#abe8c9",
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  activeSessionText: {
+    color: colors.success,
+    fontSize: 13,
+    fontWeight: "600",
+    flex: 1,
+  },
+  activeSessionLink: {
+    color: colors.accentPink,
+    fontWeight: "700",
     fontSize: 13,
   },
   primaryButton: {
