@@ -13,7 +13,8 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.anuclearpasta.client"
     },
     "android": {
       "adaptiveIcon": {
@@ -21,13 +22,19 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.anuclearpasta.client"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "@rnmapbox/maps"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "2c7b2272-a9fa-49f1-9cd3-51b60257bdaf"
+      }
+    }
   }
 }
