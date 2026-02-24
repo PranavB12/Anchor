@@ -1,6 +1,7 @@
 """
 US5 #1 — Anchor Creation API
 US9 #1 — Anchor Edit and Delete API
+US11 #3 - Prevent unlocking outside of activation window
 
 Endpoints:
     POST   /anchors             — create a new Anchor tied to a location
@@ -18,6 +19,8 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.dependencies import get_current_user_id
 from app.schemas.anchor import CreateAnchorRequest, UpdateAnchorRequest, AnchorResponse
+
+from datetime import datetime
 
 router = APIRouter(prefix="/anchors", tags=["Anchors"])
 
@@ -225,3 +228,82 @@ def delete_anchor(
     )
     db.commit()
     return {"message": "Anchor deleted successfully"}
+
+# ── US11 ───────────────────────────────────────────────────────────────────────
+@router.post("/{anchor_id}/unlock", status_code=status.HTTP_200_OK)
+def unlock_anchor(
+    anchor_id: str,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    """
+    US11 #3 — Attempt to unlock an Anchor.
+    Checks:
+      1. Anchor exists
+      2. Anchor is ACTIVE
+      3. Current time is within activation_time and expiration_time window
+      4. Unlock count has not exceeded max_unlock
+    """
+    row = _get_anchor_by_id(db, anchor_id)
+    if not row:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Anchor not found",
+        )
+
+    # Check anchor is active
+    if row.status != "ACTIVE":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Anchor is not active (status: {row.status})",
+        )
+
+    now = datetime.utcnow();
+
+    # Check activation window — if activation_time is set, must be after it
+    if row.activation_time and now < row.activation_time:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Anchor is not yet active. Opens at {row.activation_time} UTC",
+        )
+
+    # Check expiration — if expiration_time is set, must be before it
+    if row.expiration_time and now > row.expiration_time:
+        # Mark anchor as expired
+        db.execute(
+            text("UPDATE anchors SET status = 'EXPIRED' WHERE anchor_id = :anchor_id"),
+            {"anchor_id": anchor_id},
+        )
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Anchor has expired",
+        )
+
+    # Check max unlock count
+    if row.max_unlock is not None and row.current_unlock >= row.max_unlock:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Anchor has reached its maximum number of unlocks",
+        )
+
+    # All checks passed — increment unlock count
+    db.execute(
+        text("""
+            UPDATE anchors
+            SET current_unlock = current_unlock + 1
+            WHERE anchor_id = :anchor_id
+        """),
+        {"anchor_id": anchor_id},
+    )
+    db.commit()
+
+    return {
+        "message": "Anchor unlocked successfully",
+        "anchor_id": anchor_id,
+        "unlocks": row.current_unlock + 1,
+    }
+
+
+
+
