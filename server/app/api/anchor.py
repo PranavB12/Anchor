@@ -7,6 +7,7 @@ Endpoints:
     POST   /anchors             — create a new Anchor tied to a location
     PATCH  /anchors/{anchor_id} — update an existing Anchor (owner only)
     DELETE /anchors/{anchor_id} — delete an Anchor (owner only)
+    POST   /anchors/{anchor_id}/unlock — unlock an Anchor (checks activation window)
 """
 
 import json
@@ -303,6 +304,118 @@ def unlock_anchor(
         "anchor_id": anchor_id,
         "unlocks": row.current_unlock + 1,
     }
+
+# ── Nearby Anchors (US12 #3) ──────────────────────────────────────────────────
+
+from typing import Optional, List
+from fastapi import Query
+from app.schemas.anchor import AnchorResponse
+
+@router.get("/nearby", response_model=List[AnchorResponse])
+def get_nearby_anchors(
+    lat: float = Query(..., description="User's current latitude"),
+    lon: float = Query(..., description="User's current longitude"),
+    radius_km: float = Query(5.0, description="Search radius in kilometers"),
+    visibility: Optional[str] = Query(None, description="Filter by visibility: PUBLIC, PRIVATE, CIRCLE_ONLY"),
+    status: Optional[str] = Query(None, description="Filter by status: ACTIVE, EXPIRED, LOCKED, FLAGGED"),
+    sort_by: str = Query("distance", description="Sort by: distance or created_at"),
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    """
+    US12 #3 — Get nearby anchors sorted by distance with optional filters.
+    Uses MySQL ST_Distance_Sphere for accurate distance calculation.
+    """
+
+    # Build optional filter clauses
+    filters = ""
+    params = {
+        "lat": lat,
+        "lon": lon,
+        "radius_m": radius_km * 1000,
+    }
+
+    if visibility:
+        if visibility not in ("PUBLIC", "PRIVATE", "CIRCLE_ONLY"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="visibility must be PUBLIC, PRIVATE, or CIRCLE_ONLY",
+            )
+        filters += " AND a.visibility = :visibility"
+        params["visibility"] = visibility
+
+    if status:
+        if status not in ("ACTIVE", "EXPIRED", "LOCKED", "FLAGGED"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="status must be ACTIVE, EXPIRED, LOCKED, or FLAGGED",
+            )
+        filters += " AND a.status = :status"
+        params["status"] = status
+
+    # Sort clause
+    order_clause = "distance_m ASC" if sort_by == "distance" else "a.anchor_id DESC"
+
+    rows = db.execute(
+        text(f"""
+            SELECT
+                a.anchor_id,
+                a.creator_id,
+                a.title,
+                a.description,
+                ST_X(a.location) AS longitude,
+                ST_Y(a.location) AS latitude,
+                a.altitude,
+                a.status,
+                a.visibility,
+                a.unlock_radius,
+                a.max_unlock,
+                a.current_unlock,
+                a.activation_time,
+                a.expiration_time,
+                a.tags,
+                ST_Distance_Sphere(
+                    a.location,
+                    ST_GeomFromText(:user_point, 4326)
+                ) AS distance_m
+            FROM anchors a
+            WHERE ST_Distance_Sphere(
+                a.location,
+                ST_GeomFromText(:user_point, 4326)
+            ) <= :radius_m
+            {filters}
+            ORDER BY {order_clause}
+        """),
+        {**params, "user_point": f"POINT({lon} {lat})"},
+    ).fetchall()
+
+    results = []
+    for row in rows:
+        tags = row.tags
+        if isinstance(tags, str):
+            try:
+                tags = json.loads(tags)
+            except Exception:
+                tags = []
+        results.append(AnchorResponse(
+            anchor_id=row.anchor_id,
+            creator_id=row.creator_id,
+            title=row.title,
+            description=row.description,
+            latitude=row.latitude,
+            longitude=row.longitude,
+            altitude=row.altitude,
+            status=row.status,
+            visibility=row.visibility,
+            unlock_radius=row.unlock_radius,
+            max_unlock=row.max_unlock,
+            current_unlock=row.current_unlock,
+            activation_time=row.activation_time,
+            expiration_time=row.expiration_time,
+            tags=tags,
+        ))
+
+    return results
 
 
 
