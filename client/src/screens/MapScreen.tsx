@@ -5,12 +5,19 @@ import * as Location from 'expo-location';
 import Slider from '@react-native-community/slider';
 import circle from '@turf/circle';
 
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { useNavigation } from "@react-navigation/native";
+import { RootStackParamList } from "../navigation/AppNavigator";
+
+
+
 Mapbox.setAccessToken(process.env.EXPO_PUBLIC_MAPBOX_TOKEN);
 
 export default function MapScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [anchorLocation, setAnchorLocation] = useState(null);
   const [radius, setRadius] = useState(50)
-  
+
   const handleDropAnchor = async () => {
     let {status} = await Location.requestForegroundPermissionsAsync();
     if (status !== 'granted') {
@@ -71,7 +78,7 @@ export default function MapScreen() {
             <Text style={styles.radiusTitle}>Detection Radius</Text>
             <Text style={styles.radiusValue}>{radius}m</Text>
           </View>
-          
+
           <Slider
             style={styles.slider}
             minimumValue={10}
@@ -83,13 +90,13 @@ export default function MapScreen() {
             maximumTrackTintColor="#E0E0E0"
             thumbTintColor="#4285F4"
           />
-          
+
           <View style={styles.sliderLabels}>
             <Text style={styles.sliderLabelText}>10m</Text>
             <Text style={styles.sliderLabelText}>200m</Text>
           </View>
 
-          <TouchableOpacity style={styles.nextButton} onPress={() => console.log('Pressed next')}>
+          <TouchableOpacity style={styles.nextButton} onPress={() => navigation.navigate('AnchorCreation')}>
             <Text style={styles.nextButtonText}>Next</Text>
           </TouchableOpacity>
         </View>

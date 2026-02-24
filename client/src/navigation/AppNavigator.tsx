@@ -8,6 +8,7 @@ import MapScreen from "../screens/MapScreen";
 export type RootStackParamList = {
   Login: undefined;
   Map: undefined;
+  AnchorCreation: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -26,6 +27,11 @@ export default function AppNavigator() {
 	  component={MapScreen}
 	  options={{title: "Anchor Map"}}
 	/>
+    <Stack.Screen
+      name="AnchorCreation"
+      component={AnchorCreation}
+      options={{title: "Anchor Details"}}
+    />
       </Stack.Navigator>
     </NavigationContainer>
   );
