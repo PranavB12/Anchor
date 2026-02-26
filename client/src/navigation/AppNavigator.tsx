@@ -5,15 +5,11 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { useAuth } from "../context/AuthContext";
 import LoginScreen from "../screens/LoginScreen";
 import RegisterScreen from "../screens/RegisterScreen";
+import MapScreen from "../screens/MapScreen";
 
 export type RootStackParamList = {
   Login: undefined;
   Register: undefined;
-import MapScreen from "../screens/MapScreen";
-
-
-export type RootStackParamList = {
-  Login: undefined;
   Map: undefined;
 };
 
