@@ -11,6 +11,20 @@ import { RootStackParamList } from "../navigation/AppNavigator";
 
 
 
+const colors = {
+  accentWarm: "#F4BB7E",
+  accentPink: "#F55476",
+  canvas: "#FFF8F2",
+  selectedCanvas: "#F5E6DA",
+  text: "#1f2937",
+  muted: "#6b7280",
+  lightMuted: "#9FA6B5",
+  border: "#f2d9bf",
+  white: "#ffffff",
+  error: "#b42318",
+  success: "#027a48",
+  blue: "#4285F4",
+};
 Mapbox.setAccessToken(process.env.EXPO_PUBLIC_MAPBOX_TOKEN);
 
 export default function MapScreen() {
@@ -47,14 +61,14 @@ export default function MapScreen() {
             <Mapbox.ShapeSource id="radius-source" shape={radiusShape}>
               <Mapbox.FillLayer
                 id="radius-fill"
-                style={{fillColor: '#4285F4', fillOpacity: 0.2}}
+                style={{fillColor: colors.accentPink, fillOpacity: 0.2}}
               />
               <Mapbox.LineLayer
                 id="radius-line"
-                style={{ lineColor: '#4285F4', lineWidth: 1 }}
+                style={{ lineColor: colors.accentPink, lineWidth: 1 }}
               />
             </Mapbox.ShapeSource>
-            <Mapbox.PointAnnotation id="anchor-pin" coordinate={anchorLocation}>
+            <Mapbox.MarkerView id="anchor-pin" coordinate={anchorLocation}>
               <View style={{ width: 40, height: 40 }}>
               <Image
                 source={require('../../assets/unlocked.png')}
@@ -62,7 +76,7 @@ export default function MapScreen() {
                 resizeMode="contain"
               />
             </View>
-            </Mapbox.PointAnnotation>
+            </Mapbox.MarkerView>
           </>
         )}
       </Mapbox.MapView>
@@ -86,9 +100,9 @@ export default function MapScreen() {
             step={1}
             value={radius}
             onValueChange={setRadius}
-            minimumTrackTintColor="#4285F4"
-            maximumTrackTintColor="#E0E0E0"
-            thumbTintColor="#4285F4"
+            minimumTrackTintColor={colors.accentPink}
+            maximumTrackTintColor={colors.lightMuted}
+            thumbTintColor={colors.accentPink}
           />
 
           <View style={styles.sliderLabels}>
@@ -105,6 +119,7 @@ export default function MapScreen() {
   );
 }
 
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -119,18 +134,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   dropAnchorButton: {
-    backgroundColor: '#f55476',
+    backgroundColor: colors.accentPink,
     paddingVertical: 15,
     paddingHorizontal: 40,
     borderRadius: 30,
     elevation: 5,
-    shadowColor: '#000',
+    shadowColor: colors.text,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
   },
   dropAnchorText: {
-    color: 'white',
+    color: colors.white,
     fontSize: 18,
     fontWeight: 'bold',
   },
@@ -138,11 +153,11 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 0,
     width: '100%',
-    backgroundColor: 'white',
+    backgroundColor: colors.canvas,
     padding: 24,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    shadowColor: '#000',
+    shadowColor: colors.text,
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.1,
     shadowRadius: 10,
@@ -156,12 +171,12 @@ const styles = StyleSheet.create({
   radiusTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333',
+    color: colors.text,
   },
   radiusValue: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#4285F4',
+    color: colors.text,
   },
   slider: {
     width: '100%',
@@ -173,17 +188,17 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   sliderLabelText: {
-    color: '#888',
+    color: colors.lightMuted,
     fontSize: 12,
   },
   nextButton: {
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.accentPink,
     paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
   },
   nextButtonText: {
-    color: 'white',
+    color: colors.white,
     fontSize: 16,
     fontWeight: 'bold',
   },
