@@ -38,11 +38,36 @@ export type RefreshResponse = {
   token_type: "bearer";
 };
 
+export type VerifyTokenResponse = {
+  valid: true;
+  user_id: string;
+  email: string;
+  username: string;
+};
+
 export type LogoutRequest = {
   refresh_token: string;
 };
 
 export type LogoutResponse = {
+  message: string;
+};
+
+export type PasswordResetRequestPayload = {
+  email: string;
+};
+
+export type PasswordResetRequestResponse = {
+  message: string;
+  reset_token?: string | null;
+};
+
+export type PasswordResetConfirmPayload = {
+  token: string;
+  new_password: string;
+};
+
+export type MessageResponse = {
   message: string;
 };
 
@@ -74,8 +99,29 @@ export function refreshAccessToken(payload: RefreshRequest) {
   });
 }
 
+export function verifyAccessToken(token: string) {
+  return apiRequest<VerifyTokenResponse>("/auth/verify", {
+    method: "GET",
+    token,
+  });
+}
+
 export function logout(payload: LogoutRequest) {
   return apiRequest<LogoutResponse>("/auth/logout", {
+    method: "POST",
+    body: payload,
+  });
+}
+
+export function requestPasswordReset(payload: PasswordResetRequestPayload) {
+  return apiRequest<PasswordResetRequestResponse>("/auth/password-reset/request", {
+    method: "POST",
+    body: payload,
+  });
+}
+
+export function confirmPasswordReset(payload: PasswordResetConfirmPayload) {
+  return apiRequest<MessageResponse>("/auth/password-reset/confirm", {
     method: "POST",
     body: payload,
   });
