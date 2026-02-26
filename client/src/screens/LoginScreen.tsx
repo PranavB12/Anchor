@@ -50,6 +50,7 @@ export default function LoginScreen({ navigation }: Props) {
       setSuccessMessage(`Login successful. Welcome back, ${result.username}.`);
       Alert.alert("Signed in", `Welcome back, ${result.username}.`);
       // Next step: persist tokens and navigate to the authenticated app flow.
+      navigation.navigate("Map");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Login failed";
       setError(message);
@@ -355,4 +356,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     fontSize: 14,
   },
+  buttonContainer: {
+    marginTop: 20,
+  }
 });

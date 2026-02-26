@@ -9,6 +9,12 @@ import RegisterScreen from "../screens/RegisterScreen";
 export type RootStackParamList = {
   Login: undefined;
   Register: undefined;
+import MapScreen from "../screens/MapScreen";
+
+
+export type RootStackParamList = {
+  Login: undefined;
+  Map: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -48,6 +54,11 @@ export default function AppNavigator() {
           component={RegisterScreen}
           options={{ title: "Create Account" }}
         />
+	<Stack.Screen
+	  name="Map"
+	  component={MapScreen}
+	  options={{title: "Anchor Map"}}
+	/>
       </Stack.Navigator>
     </NavigationContainer>
   );
