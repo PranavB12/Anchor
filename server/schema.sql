@@ -73,7 +73,7 @@ create table if not exists text_content (
     text_body       TEXT                                                not null,
     language        varchar(50)                                         null,
 
-    FOREIGN KEY (content_id) REFERENCES content(content_id) ON DELETE CASCADE
+    FOREIGN KEY (content_id) REFERENCES Content(content_id) ON DELETE CASCADE
 );
 
 create table if not exists media_content (
@@ -81,7 +81,7 @@ create table if not exists media_content (
     file_url        varchar(2048)                                       not null,
     mime_type       varchar(255)                                        not null,
 
-    FOREIGN KEY (content_id) REFERENCES content(content_id) ON delete cascade
+    FOREIGN KEY (content_id) REFERENCES Content(content_id) ON delete cascade
 );
 
 create table if not exists link_content (
@@ -90,5 +90,5 @@ create table if not exists link_content (
     preview_url     varchar(2048)                                       null,
     page_title      varchar(255)                                        null,
 
-    foreign key (content_id) references content(content_id) on delete cascade
+    foreign key (content_id) references Content(content_id) on delete cascade
 );

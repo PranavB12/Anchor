@@ -6,11 +6,13 @@ import { useAuth } from "../context/AuthContext";
 import LoginScreen from "../screens/LoginScreen";
 import RegisterScreen from "../screens/RegisterScreen";
 import MapScreen from "../screens/MapScreen";
+import AnchorCreation from "../screens/AnchorCreation";
 
 export type RootStackParamList = {
   Login: undefined;
   Register: undefined;
   Map: undefined;
+  AnchorCreation: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -55,6 +57,11 @@ export default function AppNavigator() {
 	  component={MapScreen}
 	  options={{title: "Anchor Map"}}
 	/>
+    <Stack.Screen
+      name="AnchorCreation"
+      component={AnchorCreation}
+      options={{title: "Anchor Details"}}
+    />
       </Stack.Navigator>
     </NavigationContainer>
   );
