@@ -59,9 +59,36 @@ class RefreshResponse(BaseModel):
     token_type: str = "bearer"
 
 
+# ── Access token verify ───────────────────────────────────────────────────────
+class VerifyTokenResponse(BaseModel):
+    valid: bool = True
+    user_id: str
+    email: str
+    username: str
+
+
 # ── Logout ────────────────────────────────────────────────────────────────────
 class LogoutRequest(BaseModel):
     refresh_token: str
+
+
+# ── Password reset ────────────────────────────────────────────────────────────
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetRequestResponse(BaseModel):
+    message: str
+    reset_token: Optional[str] = None
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    token: str = Field(min_length=10, max_length=255)
+    new_password: str = Field(min_length=8, description="Minimum 8 characters")
+
+
+class MessageResponse(BaseModel):
+    message: str
 
 
 # ── Shared user info ──────────────────────────────────────────────────────────

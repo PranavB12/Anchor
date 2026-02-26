@@ -10,6 +10,7 @@ Endpoints:
 """
 
 import uuid
+import secrets
 from datetime import datetime, timedelta
 
 import httpx
@@ -19,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.dependencies import get_current_user_id
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -29,13 +31,18 @@ from app.core.security import (
 from app.schemas.auth import (
     LoginRequest,
     LoginResponse,
+    MessageResponse,
     LogoutRequest,
     OAuthRequest,
     OAuthResponse,
+    PasswordResetConfirmRequest,
+    PasswordResetRequest,
+    PasswordResetRequestResponse,
     RefreshRequest,
     RefreshResponse,
     RegisterRequest,
     RegisterResponse,
+    VerifyTokenResponse,
 )
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -105,6 +112,18 @@ def _is_session_valid(db: Session, refresh_token: str) -> bool:
 def _update_last_login(db: Session, user_id: str):
     db.execute(
         text("UPDATE users SET last_login = :now WHERE user_id = :user_id"),
+        {"now": datetime.utcnow(), "user_id": user_id},
+    )
+    db.commit()
+
+
+def _revoke_all_sessions_for_user(db: Session, user_id: str):
+    db.execute(
+        text("""
+            UPDATE user_sessions
+            SET revoked_at = :now
+            WHERE user_id = :user_id AND revoked_at IS NULL
+        """),
         {"now": datetime.utcnow(), "user_id": user_id},
     )
     db.commit()
@@ -323,6 +342,30 @@ def refresh_token(payload: RefreshRequest, db: Session = Depends(get_db)):
     return RefreshResponse(access_token=access_token)
 
 
+# ── Verify Access Token ───────────────────────────────────────────────────────
+
+@router.get("/verify", response_model=VerifyTokenResponse)
+def verify_token(
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Verify the access token and return basic user info when valid.
+    """
+    user = _get_user_by_id(db, user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    return VerifyTokenResponse(
+        user_id=user.user_id,
+        email=user.email,
+        username=user.username,
+    )
+
+
 # ── Logout ────────────────────────────────────────────────────────────────────
 
 @router.post("/logout", status_code=status.HTTP_200_OK)
@@ -333,3 +376,87 @@ def logout(payload: LogoutRequest, db: Session = Depends(get_db)):
     """
     _revoke_session(db, payload.refresh_token)
     return {"message": "Successfully logged out"}
+
+
+# ── Password Reset ────────────────────────────────────────────────────────────
+
+@router.post("/password-reset/request", response_model=PasswordResetRequestResponse)
+def request_password_reset(payload: PasswordResetRequest, db: Session = Depends(get_db)):
+    """
+    Generate a password reset token and store it.
+    Returns a generic success message whether the email exists or not.
+    """
+    user = _get_user_by_email(db, payload.email)
+    reset_token_for_debug = None
+
+    if user:
+        reset_token = secrets.token_urlsafe(32)
+        expires_at = datetime.utcnow() + timedelta(
+            minutes=settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES
+        )
+        db.execute(
+            text("""
+                UPDATE users
+                SET reset_token = :reset_token, reset_token_expiry = :expiry
+                WHERE user_id = :user_id
+            """),
+            {
+                "reset_token": reset_token,
+                "expiry": expires_at,
+                "user_id": user.user_id,
+            },
+        )
+        db.commit()
+
+        # Email delivery can be added later; return token in DEBUG mode for testing.
+        if settings.DEBUG:
+            reset_token_for_debug = reset_token
+
+    return PasswordResetRequestResponse(
+        message="If an account with that email exists, a password reset link has been sent.",
+        reset_token=reset_token_for_debug,
+    )
+
+
+@router.post("/password-reset/confirm", response_model=MessageResponse)
+def confirm_password_reset(
+    payload: PasswordResetConfirmRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Reset the user's password using a valid reset token.
+    """
+    user = db.execute(
+        text("""
+            SELECT * FROM users
+            WHERE reset_token = :token
+            AND reset_token_expiry IS NOT NULL
+            AND reset_token_expiry > :now
+        """),
+        {"token": payload.token, "now": datetime.utcnow()},
+    ).fetchone()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token",
+        )
+
+    db.execute(
+        text("""
+            UPDATE users
+            SET password_hash = :password_hash,
+                reset_token = NULL,
+                reset_token_expiry = NULL
+            WHERE user_id = :user_id
+        """),
+        {
+            "password_hash": hash_password(payload.new_password),
+            "user_id": user.user_id,
+        },
+    )
+    db.commit()
+
+    _revoke_all_sessions_for_user(db, user.user_id)
+
+    return MessageResponse(message="Password reset successful")
