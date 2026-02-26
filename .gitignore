@@ -1,7 +1,6 @@
 venv/
 .env
 CLAUDE.md
-
 .idea
 .ipynb_checkpoints
 .mypy_cache
@@ -24,6 +23,7 @@ site_build
 venv
 docs.zip
 archive.zip
+server/.venv
 
 # vim temporary files
 *~
