@@ -16,7 +16,20 @@ export type RootStackParamList = {
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
-
+const colors = {
+  accentWarm: "#F4BB7E",
+  accentPink: "#F55476",
+  canvas: "#FFF8F2",
+  selectedCanvas: "#F5E6DA",
+  text: "#1f2937",
+  muted: "#6b7280",
+  lightMuted: "#9FA6B5",
+  border: "#f2d9bf",
+  white: "#ffffff",
+  error: "#b42318",
+  success: "#027a48",
+  blue: "#4285F4",
+};
 export default function AppNavigator() {
   const { status, session } = useAuth();
 
@@ -35,6 +48,10 @@ export default function AppNavigator() {
         initialRouteName="Login"
         screenOptions={{
           headerTitleAlign: "center",
+          headerStyle: {
+            backgroundColor: colors.canvas,
+          },
+          headerTintColor: colors.text,
         }}
       >
         <Stack.Screen
@@ -81,3 +98,4 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 });
+

@@ -12,14 +12,88 @@ import {
 import { Feather } from "@expo/vector-icons";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../navigation/AppNavigator";
-
+import DateTimePicker, { 
+  DateTimePickerAndroid, // Add this
+  DateTimePickerEvent 
+} from "@react-native-community/datetimepicker";
 type Props = NativeStackScreenProps<RootStackParamList, "AnchorCreation">;
 
 export default function AnchorCreation({ navigation }: Props) {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [visibility, setVisibility] = useState<"Public" | "Circle" | "Private">("Public");
-  const [expiry, setExpiry] = useState(false);
+
+  const [creationManuallySet, setCreationManuallySet] = useState(false);
+  const [creationTime, setCreationTime] = useState<Date>(new Date());
+  const [expiryTime, setExpiryTime] = useState<Date | null>(null);
+
+  const [showCreationPicker, setShowCreationPicker] = useState(false);
+  const [showExpiryPicker, setShowExpiryPicker] = useState(false);
+
+  const formatDateTime = (date: Date) => {
+    return date.toLocaleString([], { 
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' 
+    });
+  };
+  const onCreationChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
+    if (event.type === 'set' && selectedDate) {
+      setCreationTime(selectedDate);
+    }
+    setShowCreationPicker(false);
+  };
+  const onExpiryChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
+    if (event.type === 'set' && selectedDate) {
+      setExpiryTime(selectedDate);
+    }
+    setShowExpiryPicker(false);
+  };
+
+  const showAndroidPicker = (type: 'creation' | 'expiry') => {
+    const isCreation = type === 'creation';
+    const initialDate = isCreation ? creationTime : (expiryTime || new Date());
+    DateTimePickerAndroid.open({
+      value: initialDate,
+      mode: 'date',
+      display: 'calendar',
+      minimumDate: isCreation ? undefined : new Date(),
+      onChange: (event, date) => {
+        if (event.type === 'set' && date) {
+          // 2. Once date is selected, open Time Picker
+          DateTimePickerAndroid.open({
+            value: date,
+            mode: 'time',
+            is24Hour: true,
+            onChange: (timeEvent, finalDateTime) => {
+              if (timeEvent.type === 'set' && finalDateTime) {
+                if (isCreation) {
+                  setCreationTime(finalDateTime);
+                  setCreationManuallySet(true);
+                } else {
+                  setExpiryTime(finalDateTime);
+                }
+              }
+            }
+          });
+        }
+      },
+    });
+  };
+
+  const handlePressCreation = () => {
+    if (Platform.OS === 'android') {
+      showAndroidPicker('creation');
+    } else {
+      setShowCreationPicker(true);
+    }
+  };
+
+  const handlePressExpiry = () => {
+    if (Platform.OS === 'android') {
+      showAndroidPicker('expiry');
+    } else {
+      setShowExpiryPicker(true);
+    }
+  };
 
   const handleDropAnchor = () => {
     // Add anchor submission logic here
@@ -65,7 +139,6 @@ export default function AnchorCreation({ navigation }: Props) {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.stepText}>Step 2 of 2</Text>
 
         <Text style={styles.label}>Title</Text>
         <TextInput
@@ -93,19 +166,73 @@ export default function AnchorCreation({ navigation }: Props) {
         <VisibilityOption id="Private" title="Private" subtitle="Only you" icon="lock" />
 
         <Text style={styles.sectionLabel}>Expiry Settings</Text>
+        
+        
         <TouchableOpacity
-          style={[styles.optionCard, expiry && styles.optionCardSelected]}
-          onPress={() => setExpiry(!expiry)}
+          style={[styles.optionCard, creationManuallySet && styles.optionCardSelected]}
+          onPress={handlePressCreation}
           activeOpacity={0.7}
         >
-          <View style={[styles.iconContainer, expiry ? styles.iconContainerSelected : styles.iconContainerOutline]}>
-            <Feather name="calendar" size={20} color={expiry ? "#ffffff" : "#3b82f6"} />
+          <View style={[styles.iconContainer, creationManuallySet ? styles.iconContainerSelected : styles.iconContainerOutline]}>
+            <Feather name="calendar" size={20} color={creationManuallySet ? "#ffffff" : colors.accentPink} />
           </View>
           <View style={styles.optionTextContainer}>
-            <Text style={styles.optionTitle}>Date & Time</Text>
-            <Text style={styles.optionSubtitle}>Set specific expiry</Text>
+            <Text style={styles.optionTitle}>Creation Date & Time</Text>
+            <Text style={styles.optionSubtitle}>
+              {!creationManuallySet ? "Current time" : formatDateTime(creationTime)}
+            </Text>
           </View>
         </TouchableOpacity>
+
+        {Platform.OS === 'ios' && showCreationPicker && (
+          <DateTimePicker
+            value={creationTime}
+            mode="datetime"
+            display="default"
+            onChange={(e, d) => {
+              if (e.type === 'set' && d) {
+                setCreationTime(d);
+                setCreationManuallySet(true);
+              }
+              setShowCreationPicker(false);
+            }}
+          />
+        )}
+
+        {/* Expiry Section */}
+        <TouchableOpacity
+          style={[styles.optionCard, expiryTime && styles.optionCardSelected]}
+          onPress={handlePressExpiry}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.iconContainer, expiryTime ? styles.iconContainerSelected : styles.iconContainerOutline]}>
+            <Feather name="calendar" size={20} color={expiryTime ? "#ffffff" : "#3b82f6"} />
+          </View>
+          <View style={styles.optionTextContainer}>
+            <Text style={styles.optionTitle}>Expiry Date & Time</Text>
+            <Text style={styles.optionSubtitle}>
+              {expiryTime ? formatDateTime(expiryTime) : "Set specific expiry"}
+            </Text>
+          </View>
+        </TouchableOpacity>
+
+        {Platform.OS === 'ios' && showExpiryPicker && (
+          <DateTimePicker
+            value={expiryTime || new Date()}
+            mode="datetime"
+            display="default"
+            minimumDate={new Date()}
+            onChange={(e, d) => {
+              if (e.type === 'set' && d) setExpiryTime(d);
+              setShowExpiryPicker(false);
+            }}
+          />
+        )}
+
+        <View style={styles.tagsHeader}>
+          <Text style={styles.tagsTitle}>Tags</Text>
+          <Text style={styles.optionalText}>(Optional)</Text>
+        </View>
       </ScrollView>
 
       <View style={styles.footer}>
@@ -116,6 +243,8 @@ export default function AnchorCreation({ navigation }: Props) {
     </KeyboardAvoidingView>
   );
 }
+
+// TODO: Clear creation/expiry. Creation b4 expiry. iOS checks. adding circle options to visibility options. Option to change from text to file/link. Tags
 
 const colors = {
   accentWarm: "#F4BB7E",
@@ -140,11 +269,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 10,
     paddingBottom: 40,
-  },
-  stepText: {
-    fontSize: 14,
-    color: colors.muted, //TODO: change to lighter
-    marginBottom: 20,
   },
   label: {
     fontSize: 15,
@@ -235,5 +359,22 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontSize: 16,
     fontWeight: "600",
+  },
+  tagsHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 24,
+    marginBottom: 12,
+  },
+  tagsTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  optionalText: {
+    fontSize: 14,
+    color: colors.lightMuted,
+    marginLeft: 8,
+    fontStyle: "italic",
   },
 });
