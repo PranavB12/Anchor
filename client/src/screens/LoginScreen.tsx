@@ -18,10 +18,12 @@ import type { RootStackParamList } from "../navigation/AppNavigator";
 import { useAuth } from "../context/AuthContext";
 import { login } from "../services/authService";
 import AnchorLogo from "../../assets/anchor-logo.svg";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Login">;
 
 export default function LoginScreen({ navigation }: Props) {
+  const insets = useSafeAreaInsets();
   const { signIn, status, session, signOut } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -70,7 +72,13 @@ export default function LoginScreen({ navigation }: Props) {
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
-        style={styles.screen}
+        style={[
+          styles.screen,
+          {
+            paddingTop: Math.max(insets.top, 36),
+            paddingBottom: Math.max(insets.bottom, 20)
+          }
+        ]}
       >
         <View style={styles.hero}>
           <AnchorLogo width={200} height={200} />
@@ -100,7 +108,7 @@ export default function LoginScreen({ navigation }: Props) {
             style={styles.input}
             value={email}
           />
- 
+
           <Text style={styles.label}>Password</Text>
           <View style={styles.passwordRow}>
             <TextInput

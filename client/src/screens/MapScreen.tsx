@@ -1,4 +1,4 @@
-import React, {useState, useMemo} from 'react';
+import React, { useState, useMemo } from 'react';
 import { StyleSheet, View, TouchableOpacity, Text, Alert, Image } from 'react-native';
 import Mapbox from '@rnmapbox/maps';
 import * as Location from 'expo-location';
@@ -8,6 +8,7 @@ import circle from '@turf/circle';
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useNavigation } from "@react-navigation/native";
 import { RootStackParamList } from "../navigation/AppNavigator";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 
 
@@ -28,23 +29,24 @@ const colors = {
 Mapbox.setAccessToken(process.env.EXPO_PUBLIC_MAPBOX_TOKEN);
 
 export default function MapScreen() {
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const [anchorLocation, setAnchorLocation] = useState(null);
+  const [anchorLocation, setAnchorLocation] = useState<number[] | null>(null);
   const [radius, setRadius] = useState(50)
 
   const handleDropAnchor = async () => {
-    let {status} = await Location.requestForegroundPermissionsAsync();
+    let { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('Permission Denied', 'Allow location access to drop an anchor.');
       return;
     }
     let location = await Location.getCurrentPositionAsync({
-      accuracy: Location.Accuracy.BestForNavigation,
+      accuracy: Location.Accuracy.High,
     });
     setAnchorLocation([location.coords.longitude, location.coords.latitude])
   };
   const radiusShape = useMemo(() => {
-    if (!anchorLocation) return null;
+    if (!anchorLocation) return undefined;
     return circle(anchorLocation, radius, { steps: 64, units: 'meters' });
   }, [anchorLocation, radius]);
 
@@ -61,7 +63,7 @@ export default function MapScreen() {
             <Mapbox.ShapeSource id="radius-source" shape={radiusShape}>
               <Mapbox.FillLayer
                 id="radius-fill"
-                style={{fillColor: colors.accentPink, fillOpacity: 0.2}}
+                style={{ fillColor: colors.accentPink, fillOpacity: 0.2 }}
               />
               <Mapbox.LineLayer
                 id="radius-line"
@@ -70,24 +72,24 @@ export default function MapScreen() {
             </Mapbox.ShapeSource>
             <Mapbox.MarkerView id="anchor-pin" coordinate={anchorLocation}>
               <View style={{ width: 40, height: 40 }}>
-              <Image
-                source={require('../../assets/unlocked.png')}
-                style={{ width: '100%', height: '100%' }}
-                resizeMode="contain"
-              />
-            </View>
+                <Image
+                  source={require('../../assets/unlocked.png')}
+                  style={{ width: '100%', height: '100%' }}
+                  resizeMode="contain"
+                />
+              </View>
             </Mapbox.MarkerView>
           </>
         )}
       </Mapbox.MapView>
       {!anchorLocation ? (
-        <View style={styles.buttonContainer}>
+        <View style={[styles.buttonContainer, { bottom: 60 + insets.bottom }]}>
           <TouchableOpacity style={styles.dropAnchorButton} onPress={handleDropAnchor}>
             <Text style={styles.dropAnchorText}>+  Drop Anchor</Text>
           </TouchableOpacity>
         </View>
       ) : (
-        <View style={styles.bottomSheet}>
+        <View style={[styles.bottomSheet, { paddingBottom: 24 + insets.bottom }]}>
           <View style={styles.radiusHeader}>
             <Text style={styles.radiusTitle}>Detection Radius</Text>
             <Text style={styles.radiusValue}>{radius}m</Text>

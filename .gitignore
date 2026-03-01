@@ -24,7 +24,7 @@ venv
 docs.zip
 archive.zip
 server/.venv
-
+serstart.sh
 # vim temporary files
 *~
 .*.sw?
