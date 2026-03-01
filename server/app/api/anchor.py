@@ -280,8 +280,13 @@ def unlock_anchor(
             detail="Anchor has expired",
         )
 
-    # Check max unlock count
+    # Check max unlock count (US8 #3)
     if row.max_unlock is not None and row.current_unlock >= row.max_unlock:
+        db.execute(
+            text("UPDATE anchors SET status = 'EXPIRED' WHERE anchor_id = :anchor_id"),
+            {"anchor_id": anchor_id},
+        )
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Anchor has reached its maximum number of unlocks",
@@ -298,10 +303,20 @@ def unlock_anchor(
     )
     db.commit()
 
+    new_count = row.current_unlock + 1
+
+    # If this unlock was the last one, mark as expired (US8 #3)
+    if row.max_unlock is not None and new_count >= row.max_unlock:
+        db.execute(
+            text("UPDATE anchors SET status = 'EXPIRED' WHERE anchor_id = :anchor_id"),
+            {"anchor_id": anchor_id},
+        )
+        db.commit()
+
     return {
         "message": "Anchor unlocked successfully",
         "anchor_id": anchor_id,
-        "unlocks": row.current_unlock + 1,
+        "unlocks": new_count,
     }
 
 
