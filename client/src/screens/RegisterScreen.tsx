@@ -19,10 +19,12 @@ import type { RootStackParamList } from "../navigation/AppNavigator";
 import { useAuth } from "../context/AuthContext";
 import { register as registerUser } from "../services/authService";
 import AnchorLogo from "../../assets/anchor-logo.svg";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Register">;
 
 export default function RegisterScreen({ navigation }: Props) {
+  const insets = useSafeAreaInsets();
   const { signIn } = useAuth();
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
@@ -95,7 +97,13 @@ export default function RegisterScreen({ navigation }: Props) {
         style={styles.screen}
       >
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[
+            styles.scrollContent,
+            {
+              paddingTop: Math.max(insets.top, 28),
+              paddingBottom: Math.max(insets.bottom, 24)
+            }
+          ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
