@@ -8,6 +8,7 @@ import RegisterScreen from "../screens/RegisterScreen";
 import DiscoveryScreen from "../screens/DiscoveryScreen";
 import MapScreen from "../screens/MapScreen";
 import AnchorCreation from "../screens/AnchorCreation";
+import EditAnchor from "../screens/EditAnchor";
 
 export type RootStackParamList = {
   Login: undefined;
@@ -15,6 +16,7 @@ export type RootStackParamList = {
   Discovery: undefined;
   Map: undefined;
   AnchorCreation: { latitude: number; longitude: number; radius: number };
+  EditAnchor: { anchorId: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -73,6 +75,11 @@ export default function AppNavigator() {
               name="AnchorCreation"
               component={AnchorCreation}
               options={{ title: "Anchor Details" }}
+            />
+            <Stack.Screen
+              name="EditAnchor"
+              component={EditAnchor}
+              options={{ title: "Edit Anchor Details" }}
             />
           </>
         ) : (
