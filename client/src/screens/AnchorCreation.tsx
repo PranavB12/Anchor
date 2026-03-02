@@ -11,6 +11,7 @@ import {
   Modal,
   Pressable,
   Animated,
+  Alert,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -21,6 +22,8 @@ import DateTimePicker, {
 } from "@react-native-community/datetimepicker";
 type Props = NativeStackScreenProps<RootStackParamList, "AnchorCreation">;
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { apiRequest } from "../services/api";
+import { useAuth } from "../context/AuthContext";
 
 
 // Dummy circle. TODO: CHANGE THEM LATER TO GET FROM BACKEND!!!
@@ -33,11 +36,15 @@ const DUMMY_CIRCLES = [
 type ContentType = "text" | "file" | "link";
 
 
-export default function AnchorCreation({ navigation }: Props) {
+export default function AnchorCreation({ navigation, route }: Props) {
+  const { latitude, longitude, radius } = route.params;
+  const { session } = useAuth();
   const insets = useSafeAreaInsets();
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [visibility, setVisibility] = useState<"Public" | "Circle" | "Private">("Public");
+  const [maxUnlock, setMaxUnlock] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Date Entry
   const [creationManuallySet, setCreationManuallySet] = useState(false);
@@ -157,10 +164,49 @@ export default function AnchorCreation({ navigation }: Props) {
 
 
   // Submitting logic
-  const handleDropAnchor = () => {
-    // Add anchor submission logic here
+  const handleDropAnchor = async () => {
     if (dateError) return;
-    navigation.navigate("Map");
+    if (!title.trim()) {
+      Alert.alert("Missing Title", "Please give your anchor a name.");
+      return;
+    }
+    if (!session?.access_token) {
+      Alert.alert("Not Logged In", "Please log in to create an anchor.");
+      return;
+    }
+
+    const visibilityMap = { Public: "PUBLIC", Circle: "CIRCLE_ONLY", Private: "PRIVATE" } as const;
+
+    const body: Record<string, unknown> = {
+      title: title.trim(),
+      latitude,
+      longitude,
+      visibility: visibilityMap[visibility],
+      unlock_radius: radius,
+      activation_time: creationManuallySet ? creationTime.toISOString() : null,
+      expiration_time: expiryTime ? expiryTime.toISOString() : null,
+    };
+
+    if (content.trim()) {
+      body.description = content.trim();
+    }
+    if (maxUnlock.trim()) {
+      body.max_unlock = parseInt(maxUnlock, 10);
+    }
+
+    setIsSubmitting(true);
+    try {
+      await apiRequest("/anchors/", {
+        method: "POST",
+        body,
+        token: session.access_token,
+      });
+      navigation.navigate("Map");
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Failed to create anchor.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // content
@@ -381,6 +427,17 @@ export default function AnchorCreation({ navigation }: Props) {
             }}
           />
         )}
+
+        {/* MAX UNLOCK COUNT */}
+        <Text style={styles.label}>Max Unlock Count</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Unlimited (leave blank)"
+          placeholderTextColor={colors.lightMuted}
+          value={maxUnlock}
+          onChangeText={setMaxUnlock}
+          keyboardType="number-pad"
+        />
 
         {/* TAGS UI TODO*/}
         <View style={styles.tagsHeader}>

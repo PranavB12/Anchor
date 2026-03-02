@@ -14,7 +14,7 @@ export type RootStackParamList = {
   Register: undefined;
   Discovery: undefined;
   Map: undefined;
-  AnchorCreation: undefined;
+  AnchorCreation: { latitude: number; longitude: number; radius: number };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
