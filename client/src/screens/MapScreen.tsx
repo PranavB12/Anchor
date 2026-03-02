@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, {useEffect, useState, useMemo} from 'react';
 import { StyleSheet, View, TouchableOpacity, Text, Alert, Image } from 'react-native';
 import Mapbox from '@rnmapbox/maps';
 import * as Location from 'expo-location';
@@ -8,9 +8,10 @@ import circle from '@turf/circle';
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useNavigation } from "@react-navigation/native";
 import { RootStackParamList } from "../navigation/AppNavigator";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
-
+type Coordinate = [number, number];
+const FALLBACK_CENTER: Coordinate = [-86.9081, 40.4237];
 
 const colors = {
   accentWarm: "#F4BB7E",
@@ -26,13 +27,18 @@ const colors = {
   success: "#027a48",
   blue: "#4285F4",
 };
-Mapbox.setAccessToken(process.env.EXPO_PUBLIC_MAPBOX_TOKEN);
+const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN;
+Mapbox.setAccessToken(MAPBOX_TOKEN ?? "");
 
 export default function MapScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [anchorLocation, setAnchorLocation] = useState<number[] | null>(null);
   const [radius, setRadius] = useState(50)
+
+  useEffect(() => {
+    console.log("MAPBOX TOKEN:", MAPBOX_TOKEN);
+  }, []);
 
   const handleDropAnchor = async () => {
     let { status } = await Location.requestForegroundPermissionsAsync();
@@ -43,7 +49,7 @@ export default function MapScreen() {
     let location = await Location.getCurrentPositionAsync({
       accuracy: Location.Accuracy.High,
     });
-    setAnchorLocation([location.coords.longitude, location.coords.latitude])
+    setAnchorLocation([location.coords.longitude, location.coords.latitude]);
   };
   const radiusShape = useMemo(() => {
     if (!anchorLocation) return undefined;
@@ -51,11 +57,20 @@ export default function MapScreen() {
   }, [anchorLocation, radius]);
 
   return (
-    <View style={styles.container}>
-      <Mapbox.MapView style={styles.map} styleURL={Mapbox.StyleURL.Light}>
+    <SafeAreaView edges={["top", "left", "right"]} style={styles.container}>
+      <Mapbox.MapView
+        style={styles.map}
+        styleURL={Mapbox.StyleURL.Light}
+        onMapLoadingError={() => {
+          console.log("Map fail: map style or tiles could not be loaded");
+        }}
+        onDidFinishLoadingStyle={() => {
+          console.log("Style loaded");
+        }}
+      >
         <Mapbox.Camera
           zoomLevel={15}
-          centerCoordinate={anchorLocation || [-86.9081, 40.4237]}
+          centerCoordinate={anchorLocation ?? FALLBACK_CENTER}
           animationDuration={1000}
         />
         {anchorLocation && (
@@ -117,7 +132,7 @@ export default function MapScreen() {
           </TouchableOpacity>
         </View>
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 

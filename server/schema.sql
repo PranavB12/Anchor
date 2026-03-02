@@ -92,3 +92,69 @@ create table if not exists link_content (
 
     foreign key (content_id) references Content(content_id) on delete cascade
 );
+
+-- ---------------------------------------------------------------------------
+-- Seed data for local development
+-- ---------------------------------------------------------------------------
+-- Creator user used by seed anchors below.
+INSERT IGNORE INTO users (
+    user_id,
+    email,
+    password_hash,
+    username
+) VALUES (
+    '11111111-1111-1111-1111-111111111111',
+    'seed.user@anchor.dev',
+    '$2b$12$seedplaceholderhashforlocaldevonly',
+    'seed_user'
+);
+
+-- Two nearby, ACTIVE anchors with short tags for good list-card display.
+INSERT IGNORE INTO anchors (
+    anchor_id,
+    creator_id,
+    title,
+    description,
+    location,
+    altitude,
+    status,
+    visibility,
+    unlock_radius,
+    max_unlock,
+    current_unlock,
+    activation_time,
+    expiration_time,
+    tags
+) VALUES
+(
+    '22222222-2222-2222-2222-222222222222',
+    '11111111-1111-1111-1111-111111111111',
+    'Engineering Fountain Trivia',
+    'Unlock to see today''s campus trivia prompt and hints.',
+    ST_GeomFromText('POINT(-86.906414 40.422857)', 4326),
+    NULL,
+    'ACTIVE',
+    'PUBLIC',
+    120,
+    200,
+    14,
+    DATE_SUB(NOW(), INTERVAL 2 HOUR),
+    DATE_ADD(NOW(), INTERVAL 7 DAY),
+    JSON_ARRAY('campus', 'trivia')
+),
+(
+    '33333333-3333-3333-3333-333333333333',
+    '11111111-1111-1111-1111-111111111111',
+    'PMU Study Circle Notes',
+    'Shared notes and quick links for this week''s study group.',
+    ST_GeomFromText('POINT(-86.905780 40.423210)', 4326),
+    NULL,
+    'ACTIVE',
+    'CIRCLE_ONLY',
+    90,
+    NULL,
+    5,
+    DATE_SUB(NOW(), INTERVAL 1 HOUR),
+    DATE_ADD(NOW(), INTERVAL 5 DAY),
+    JSON_ARRAY('study', 'notes')
+);

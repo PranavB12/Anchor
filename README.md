@@ -98,6 +98,21 @@ npx expo start --dev-client
 
 ---
 
+## Google OAuth Setup
+
+1. In Google Cloud Console, create OAuth client IDs for:
+   * iOS app
+   * Android app
+   * Web app
+2. In `client/`, copy `.env.example` to `.env` and set:
+   * `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`
+   * `EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID`
+   * `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`
+3. In `server/`, set `GOOGLE_CLIENT_IDS` in `.env` to a comma-separated list of the same client IDs.
+4. Restart backend and Expo dev server after env changes.
+
+---
+
 ## Team 21
 
 **Project Manager:** Rachit Kumar  

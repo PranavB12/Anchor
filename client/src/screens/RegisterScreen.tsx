@@ -19,12 +19,11 @@ import type { RootStackParamList } from "../navigation/AppNavigator";
 import { useAuth } from "../context/AuthContext";
 import { register as registerUser } from "../services/authService";
 import AnchorLogo from "../../assets/anchor-logo.svg";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Register">;
 
 export default function RegisterScreen({ navigation }: Props) {
-  const insets = useSafeAreaInsets();
   const { signIn } = useAuth();
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
@@ -78,8 +77,8 @@ export default function RegisterScreen({ navigation }: Props) {
       setConfirmPassword("");
       Alert.alert("Account created", message, [
         {
-          text: "Go to Login",
-          onPress: () => navigation.navigate("Login"),
+          text: "Continue",
+          onPress: () => navigation.navigate("Discovery"),
         },
       ]);
     } catch (err) {
@@ -91,24 +90,19 @@ export default function RegisterScreen({ navigation }: Props) {
   };
 
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        style={styles.screen}
-      >
-        <ScrollView
-          contentContainerStyle={[
-            styles.scrollContent,
-            {
-              paddingTop: Math.max(insets.top, 28),
-              paddingBottom: Math.max(insets.bottom, 24)
-            }
-          ]}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
+    <SafeAreaView edges={["top", "right", "left", "bottom"]} style={styles.safeArea}>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={styles.screen}
         >
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
           <View style={styles.hero}>
-            <AnchorLogo width={180} height={180} />
+            <AnchorLogo width={240} height={49} />
             <Text style={styles.subtitle}>Create your Anchor account</Text>
           </View>
 
@@ -209,9 +203,10 @@ export default function RegisterScreen({ navigation }: Props) {
               </Pressable>
             </View>
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </TouchableWithoutFeedback>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </TouchableWithoutFeedback>
+    </SafeAreaView>
   );
 }
 
@@ -228,9 +223,12 @@ const colors = {
 };
 
 const styles = StyleSheet.create({
-  screen: {
+  safeArea: {
     flex: 1,
     backgroundColor: colors.canvas,
+  },
+  screen: {
+    flex: 1,
   },
   scrollContent: {
     paddingHorizontal: 20,

@@ -5,12 +5,14 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { useAuth } from "../context/AuthContext";
 import LoginScreen from "../screens/LoginScreen";
 import RegisterScreen from "../screens/RegisterScreen";
+import DiscoveryScreen from "../screens/DiscoveryScreen";
 import MapScreen from "../screens/MapScreen";
 import AnchorCreation from "../screens/AnchorCreation";
 
 export type RootStackParamList = {
   Login: undefined;
   Register: undefined;
+  Discovery: undefined;
   Map: undefined;
   AnchorCreation: { latitude: number; longitude: number; radius: number };
 };
@@ -45,40 +47,48 @@ export default function AppNavigator() {
   return (
     <NavigationContainer>
       <Stack.Navigator
-        initialRouteName="Login"
+        initialRouteName={status === "authenticated" ? "Discovery" : "Login"}
         screenOptions={{
           headerTitleAlign: "center",
           headerStyle: {
             backgroundColor: colors.canvas,
           },
           headerTintColor: colors.text,
+          headerShown: false,
         }}
       >
-        <Stack.Screen
-          name="Login"
-          component={LoginScreen}
-          options={{
-            title:
-              status === "authenticated" && session
-                ? `Signed In (${session.username})`
-                : "Anchor Login",
-          }}
-        />
-        <Stack.Screen
-          name="Register"
-          component={RegisterScreen}
-          options={{ title: "Create Account" }}
-        />
-	<Stack.Screen
-	  name="Map"
-	  component={MapScreen}
-	  options={{title: "Anchor Map"}}
-	/>
-    <Stack.Screen
-      name="AnchorCreation"
-      component={AnchorCreation}
-      options={{title: "Anchor Details"}}
-    />
+        {status === "authenticated" && session ? (
+          <>
+            <Stack.Screen
+              name="Discovery"
+              component={DiscoveryScreen}
+              options={{ title: "Discover" }}
+            />
+            <Stack.Screen
+              name="Map"
+              component={MapScreen}
+              options={{ title: "Anchor Map" }}
+            />
+            <Stack.Screen
+              name="AnchorCreation"
+              component={AnchorCreation}
+              options={{ title: "Anchor Details" }}
+            />
+          </>
+        ) : (
+          <>
+            <Stack.Screen
+              name="Login"
+              component={LoginScreen}
+              options={{ title: "Anchor Login" }}
+            />
+            <Stack.Screen
+              name="Register"
+              component={RegisterScreen}
+              options={{ title: "Create Account" }}
+            />
+          </>
+        )}
       </Stack.Navigator>
     </NavigationContainer>
   );
@@ -98,4 +108,3 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 });
-
