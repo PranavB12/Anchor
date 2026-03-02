@@ -38,13 +38,6 @@ export type RefreshResponse = {
   token_type: "bearer";
 };
 
-export type VerifyTokenResponse = {
-  valid: true;
-  user_id: string;
-  email: string;
-  username: string;
-};
-
 export type LogoutRequest = {
   refresh_token: string;
 };
@@ -53,13 +46,20 @@ export type LogoutResponse = {
   message: string;
 };
 
+export type VerifyTokenResponse = {
+  valid: true;
+  user_id: string;
+  email: string;
+  username: string;
+};
+
 export type PasswordResetRequestPayload = {
   email: string;
 };
 
 export type PasswordResetRequestResponse = {
   message: string;
-  reset_token?: string | null;
+  reset_token?: string;
 };
 
 export type PasswordResetConfirmPayload = {
@@ -71,46 +71,44 @@ export type MessageResponse = {
   message: string;
 };
 
+export type UpdateProfileRequest = {
+  username?: string;
+  email?: string;
+  bio?: string;
+  avatar_url?: string;
+};
+
+export type ProfileResponse = {
+  user_id: string;
+  email: string;
+  username: string;
+  bio?: string;
+  avatar_url?: string;
+  is_ghost_mode: boolean;
+};
+
 export function register(payload: RegisterRequest) {
-  return apiRequest<AuthResponse>("/auth/register", {
-    method: "POST",
-    body: payload,
-  });
+  return apiRequest<AuthResponse>("/auth/register", { method: "POST", body: payload });
 }
 
 export function login(payload: LoginRequest) {
-  return apiRequest<AuthResponse>("/auth/login", {
-    method: "POST",
-    body: payload,
-  });
+  return apiRequest<AuthResponse>("/auth/login", { method: "POST", body: payload });
 }
 
 export function oauthLogin(payload: OAuthRequest) {
-  return apiRequest<OAuthResponse>("/auth/oauth", {
-    method: "POST",
-    body: payload,
-  });
+  return apiRequest<OAuthResponse>("/auth/oauth", { method: "POST", body: payload });
 }
 
 export function refreshAccessToken(payload: RefreshRequest) {
-  return apiRequest<RefreshResponse>("/auth/refresh", {
-    method: "POST",
-    body: payload,
-  });
-}
-
-export function verifyAccessToken(token: string) {
-  return apiRequest<VerifyTokenResponse>("/auth/verify", {
-    method: "GET",
-    token,
-  });
+  return apiRequest<RefreshResponse>("/auth/refresh", { method: "POST", body: payload });
 }
 
 export function logout(payload: LogoutRequest) {
-  return apiRequest<LogoutResponse>("/auth/logout", {
-    method: "POST",
-    body: payload,
-  });
+  return apiRequest<LogoutResponse>("/auth/logout", { method: "POST", body: payload });
+}
+
+export function verifyAccessToken(token: string) {
+  return apiRequest<VerifyTokenResponse>("/auth/verify", { method: "GET", token });
 }
 
 export function requestPasswordReset(payload: PasswordResetRequestPayload) {
@@ -125,4 +123,12 @@ export function confirmPasswordReset(payload: PasswordResetConfirmPayload) {
     method: "POST",
     body: payload,
   });
+}
+
+export function getProfile(token: string) {
+  return apiRequest<ProfileResponse>("/user/profile", { method: "GET", token });
+}
+
+export function updateProfile(payload: UpdateProfileRequest, token: string) {
+  return apiRequest<ProfileResponse>("/user/profile", { method: "PATCH", body: payload, token });
 }
