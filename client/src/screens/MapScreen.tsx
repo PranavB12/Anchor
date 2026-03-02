@@ -112,7 +112,7 @@ export default function MapScreen() {
             <Text style={styles.sliderLabelText}>200m</Text>
           </View>
 
-          <TouchableOpacity style={styles.nextButton} onPress={() => navigation.navigate('AnchorCreation')}>
+          <TouchableOpacity style={styles.nextButton} onPress={() => navigation.navigate('AnchorCreation', { latitude: anchorLocation[1], longitude: anchorLocation[0], radius })}>
             <Text style={styles.nextButtonText}>Next</Text>
           </TouchableOpacity>
         </View>
