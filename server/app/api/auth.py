@@ -11,7 +11,9 @@ Endpoints:
 
 import uuid
 import secrets
+import logging
 from datetime import datetime, timedelta
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -21,6 +23,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.dependencies import get_current_user_id
+from app.core.email import send_email
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -46,6 +49,7 @@ from app.schemas.auth import (
 )
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+logger = logging.getLogger(__name__)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -127,6 +131,36 @@ def _revoke_all_sessions_for_user(db: Session, user_id: str):
         {"now": datetime.utcnow(), "user_id": user_id},
     )
     db.commit()
+
+
+def _build_password_reset_link(reset_token: str) -> str:
+    base_url = settings.PASSWORD_RESET_DEEP_LINK_BASE.strip()
+    parsed = urlsplit(base_url)
+    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    query["token"] = reset_token
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(query), parsed.fragment))
+
+
+def _send_password_reset_email(recipient_email: str, reset_link: str):
+    subject = "Reset your Anchor password"
+    text_body = (
+        "We received a request to reset your Anchor password.\n\n"
+        f"Open this link to continue:\n{reset_link}\n\n"
+        f"This link expires in {settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES} minutes.\n"
+        "If you did not request a password reset, you can ignore this email."
+    )
+    html_body = (
+        "<p>We received a request to reset your Anchor password.</p>"
+        f"<p><a href=\"{reset_link}\">Open Reset Link</a></p>"
+        f"<p>This link expires in {settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES} minutes.</p>"
+        "<p>If you did not request a password reset, you can ignore this email.</p>"
+    )
+    return send_email(
+        to_email=recipient_email,
+        subject=subject,
+        text_body=text_body,
+        html_body=html_body,
+    )
 
 
 # ── Register ──────────────────────────────────────────────────────────────────
@@ -428,7 +462,12 @@ def request_password_reset(payload: PasswordResetRequest, db: Session = Depends(
         )
         db.commit()
 
-        # Email delivery can be added later; return token in DEBUG mode for testing.
+        reset_link = _build_password_reset_link(reset_token)
+        sent = _send_password_reset_email(payload.email, reset_link)
+        if not sent:
+            logger.warning("Password reset email was not sent for %s", payload.email)
+
+        # Keep returning token in DEBUG mode to simplify local testing.
         if settings.DEBUG:
             reset_token_for_debug = reset_token
 
