@@ -1,4 +1,4 @@
-import React, {useEffect, useState, useMemo} from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { StyleSheet, View, TouchableOpacity, Text, Alert, Image } from 'react-native';
 import Mapbox from '@rnmapbox/maps';
 import * as Location from 'expo-location';
@@ -30,6 +30,41 @@ const colors = {
 const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN;
 Mapbox.setAccessToken(MAPBOX_TOKEN ?? "");
 
+const DUMMY_ANCHORS = [
+  {
+    id: "anchor_001",
+    coordinate: [-86.9120, 40.4243] as Coordinate,
+    isOwn: true,
+  },
+  {
+    id: "anchor_002",
+    coordinate: [-86.9060, 40.4230] as Coordinate,
+    isOwn: false,
+  },
+];
+
+
+const RADIUS_FACTS: [number, number, string[]][] = [
+  [10, 15, ["~1 T-Rex lying down 🦕", "~5 Shaqs 🏀"]],
+  [16, 25, ["a bowling lane 🎳", "~4 giraffes laid sideways 🦒", "a tennis court 🎾"]],
+  [26, 40, ["one blue whale 🐋", "how far a snail can travel in a day 🐌"]],
+  [41, 60, ["~10 sedans 🚗", "1 Olympic pools 🏊", "a very ambitious snowball throw ❄️"]],
+  [61, 80, ["average frisbee throws 🥏"]],
+  [81, 100, ["the Statue of Liberty tipped over 🗽", "one really committed javelin throw 🥇", "the best paper airplane throw ✈️"]],
+  [101, 130, ["a full football field 🏈", "~10 double-decker buses 🚌"]],
+  [131, 160, ["~2 Doors to Hell 🚪"]],
+  [161, 200, ["the world's longest hot dog"]],
+];
+
+function getRadiusFact(meters: number): string {
+  for (const [min, max, labels] of RADIUS_FACTS) {
+    if (meters >= min && meters <= max) {
+      const idx = Math.floor(((meters - min) / (max - min + 1)) * labels.length);
+      return labels[Math.min(idx, labels.length - 1)];
+    }
+  }
+  return `${meters}m`;
+}
 export default function MapScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -56,6 +91,17 @@ export default function MapScreen() {
     return circle(anchorLocation, radius, { steps: 64, units: 'meters' });
   }, [anchorLocation, radius]);
 
+  const handleAnchorPress = (anchor: typeof DUMMY_ANCHORS[0]) => {
+    if (!anchor.isOwn) return;
+    Alert.alert("Your Anchor", undefined, [
+      {
+        text: "Edit Anchor",
+        onPress: () => navigation.navigate("EditAnchor", { anchorId: anchor.id }),
+      },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  };
+
   return (
     <SafeAreaView edges={["top", "left", "right"]} style={styles.container}>
       <Mapbox.MapView
@@ -73,6 +119,31 @@ export default function MapScreen() {
           centerCoordinate={anchorLocation ?? FALLBACK_CENTER}
           animationDuration={1000}
         />
+
+        {/* DUMMY ANCHOR PLACEMENT */}
+        {DUMMY_ANCHORS.map((anchor) => (
+          <Mapbox.MarkerView
+            key={anchor.id}
+            id={anchor.id}
+            coordinate={anchor.coordinate}
+          >
+            <TouchableOpacity
+              onPress={() => handleAnchorPress(anchor)}
+              activeOpacity={anchor.isOwn ? 0.7 : 1}
+            >
+              <View style={styles.markerWrapper}>
+                <Image
+                  source={require('../../assets/unlocked.png')}
+                  style={styles.markerImage}
+                  resizeMode="contain"
+                />
+                {anchor.isOwn && <View style={styles.ownerBadge} />}
+              </View>
+            </TouchableOpacity>
+          </Mapbox.MarkerView>
+        ))}
+
+
         {anchorLocation && (
           <>
             <Mapbox.ShapeSource id="radius-source" shape={radiusShape}>
@@ -97,18 +168,21 @@ export default function MapScreen() {
           </>
         )}
       </Mapbox.MapView>
-      {!anchorLocation ? (
+      {!anchorLocation && (
         <View style={[styles.buttonContainer, { bottom: 60 + insets.bottom }]}>
           <TouchableOpacity style={styles.dropAnchorButton} onPress={handleDropAnchor}>
             <Text style={styles.dropAnchorText}>+  Drop Anchor</Text>
           </TouchableOpacity>
         </View>
-      ) : (
+      )}
+      {anchorLocation && (
         <View style={[styles.bottomSheet, { paddingBottom: 24 + insets.bottom }]}>
           <View style={styles.radiusHeader}>
             <Text style={styles.radiusTitle}>Detection Radius</Text>
             <Text style={styles.radiusValue}>{radius}m</Text>
           </View>
+
+          <Text style={styles.radiusFact}>≈ {getRadiusFact(radius)}</Text>
 
           <Slider
             style={styles.slider}
@@ -143,6 +217,19 @@ const styles = StyleSheet.create({
   },
   map: {
     flex: 1,
+  },
+  markerWrapper: { width: 40, height: 40 },
+  markerImage: { width: '100%', height: '100%' },
+  ownerBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 13,
+    height: 13,
+    borderRadius: 7,
+    backgroundColor: colors.accentPink,
+    borderWidth: 1.5,
+    borderColor: colors.white,
   },
   buttonContainer: {
     position: 'absolute',
@@ -194,6 +281,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: colors.text,
+  },
+  radiusFact: {
+    fontSize: 12,
+    color: colors.accentPink,
+    fontStyle: 'italic',
+    marginBottom: 8,
   },
   slider: {
     width: '100%',

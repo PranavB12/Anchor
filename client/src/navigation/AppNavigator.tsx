@@ -8,6 +8,7 @@ import RegisterScreen from "../screens/RegisterScreen";
 import DiscoveryScreen from "../screens/DiscoveryScreen";
 import MapScreen from "../screens/MapScreen";
 import AnchorCreation from "../screens/AnchorCreation";
+import EditAnchor from "../screens/EditAnchor";
 import ForgotPasswordScreen from "../screens/ForgotPasswordScreen";
 import ResetPasswordScreen from "../screens/ResetPasswordScreen";
 import EditProfileScreen from "../screens/EditProfileScreen";
@@ -20,6 +21,7 @@ export type RootStackParamList = {
   Discovery: undefined;
   Map: undefined;
   AnchorCreation: { latitude: number; longitude: number; radius: number };
+  EditAnchor: { anchorId: string };
   EditProfile: undefined;
 };
 
@@ -69,6 +71,11 @@ export default function AppNavigator() {
             <Stack.Screen name="Map" component={MapScreen} options={{ title: "Anchor Map" }} />
             <Stack.Screen name="AnchorCreation" component={AnchorCreation} options={{ title: "Anchor Details" }} />
             <Stack.Screen name="EditProfile" component={EditProfileScreen} options={{ title: "Edit Profile" }} />
+            <Stack.Screen
+              name="EditAnchor"
+              component={EditAnchor}
+              options={{ title: "Edit Anchor Details" }}
+            />
           </>
         ) : (
           <>

@@ -28,7 +28,8 @@
     "react-native": "0.81.5",
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
-    "react-native-svg": "^15.12.1"
+    "react-native-svg": "^15.12.1",
+    "undefined": "expo-auth-session/providers/google"
   },
   "devDependencies": {
     "@types/react": "~19.1.0",

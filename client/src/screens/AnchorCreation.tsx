@@ -33,6 +33,8 @@ const DUMMY_CIRCLES = [
   { id: "3", name: "Club", emoji: "📷", memberCount: 23 },
 ];
 
+const SUGGESTED_TAGS = ["nature", "chill", "secret", "food", "art", "music", "study", "event", "surprise", "local"];
+
 type ContentType = "text" | "file" | "link";
 
 
@@ -62,6 +64,11 @@ export default function AnchorCreation({ navigation, route }: Props) {
   // Content entry
   const [showContentTypeModal, setShowContentTypeModal] = useState(false);
   const [contentType, setContentType] = useState<ContentType>("text");
+
+  // Tags
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState("");
+  const [tagInputFocused, setTagInputFocused] = useState(false);
 
   // helpers
   const formatDateTime = (date: Date) => {
@@ -160,6 +167,21 @@ export default function AnchorCreation({ navigation, route }: Props) {
   const handleVisibilityPress = (id: "Public" | "Circle" | "Private") => {
     setVisibility(id);
     if (id === "Circle") setShowCircleModal(true);
+  };
+
+  // Tags UI logic
+  const addTag = (tag: string) => {
+    const cleaned = tag.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+    if (cleaned && !tags.includes(cleaned) && tags.length < 8) {
+      setTags([...tags, cleaned]);
+    }
+    setTagInput("");
+  };
+
+  const removeTag = (tag: string) => setTags(tags.filter((t) => t !== tag));
+
+  const handleTagInputSubmit = () => {
+    if (tagInput.trim()) addTag(tagInput);
   };
 
 
@@ -280,170 +302,224 @@ export default function AnchorCreation({ navigation, route }: Props) {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-        {/* TITLE UI */}
-        <Text style={styles.label}>Title</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Give your anchor a name"
-          placeholderTextColor={colors.lightMuted}
-          value={title}
-          onChangeText={setTitle}
-        />
-
-        {/* CONTENT UI */}
-        <View style={styles.contentLabelRow}>
-          <Text style={styles.label}>Content</Text>
-          <TouchableOpacity
-            style={styles.contentTypeBadge}
-            onPress={() => setShowContentTypeModal(true)}
-            activeOpacity={0.7}
-          >
-            <Feather
-              name={contentTypeIcon[contentType]}
-              size={13}
-              color={colors.accentPink}
-              style={{ marginRight: 4 }}
-            />
-            <Text style={styles.contentTypeBadgeText}>{contentTypeLabel[contentType]}</Text>
-            <Feather name="chevron-down" size={13} color={colors.accentPink} />
-          </TouchableOpacity>
-        </View>
-        {contentType === "text" && (
-          <TextInput
-            style={[styles.input, styles.textArea]}
-            placeholder="What do you want to share?"
-            placeholderTextColor={colors.lightMuted}
-            value={content}
-            onChangeText={setContent}
-            multiline
-            textAlignVertical="top"
-          />
-        )}
-        {contentType === "file" && (
-          <TouchableOpacity style={[styles.input, styles.filePlaceholder]} activeOpacity={0.7}>
-            <Feather name="upload" size={22} color={colors.accentPink} />
-            <Text style={styles.filePlaceholderText}>Tap to attach a file</Text>
-            <Text style={styles.filePlaceholderSub}>PDF, image, audio, etc.</Text>
-          </TouchableOpacity>
-        )}
-        {contentType === "link" && (
+          {/* TITLE UI */}
+          <Text style={styles.label}>Title</Text>
           <TextInput
             style={styles.input}
-            placeholder="https://..."
-            placeholderTextColor="#9ca3af"
-            value={content}
-            onChangeText={setContent}
-            keyboardType="url"
-            autoCapitalize="none"
+            placeholder="Give your anchor a name"
+            placeholderTextColor={colors.lightMuted}
+            value={title}
+            onChangeText={setTitle}
           />
-        )}
 
-        {/* VISIBILITY UI */}
-        <Text style={styles.sectionLabel}>Who can unlock this?</Text>
-        <VisibilityOption id="Public" title="Public" subtitle="Anyone can unlock" icon="globe" />
-        <VisibilityOption id="Circle" title="Circle" subtitle="Only specific groups" icon="users" />
-        <VisibilityOption id="Private" title="Private" subtitle="Only you" icon="lock" />
-
-
-        {/* DATE AND TIME FOR CREATION/EXPIRY UI */}
-        <Text style={styles.sectionLabel}>Expiry Settings</Text>
-        {dateError && (
-          <View style={styles.errorBanner}>
-            <Feather name="alert-circle" size={14} color={colors.error} />
-            <Text style={styles.errorText}>{dateError}</Text>
+          {/* CONTENT UI */}
+          <View style={styles.contentLabelRow}>
+            <Text style={styles.label}>Content</Text>
+            <TouchableOpacity
+              style={styles.contentTypeBadge}
+              onPress={() => setShowContentTypeModal(true)}
+              activeOpacity={0.7}
+            >
+              <Feather
+                name={contentTypeIcon[contentType]}
+                size={13}
+                color={colors.accentPink}
+                style={{ marginRight: 4 }}
+              />
+              <Text style={styles.contentTypeBadgeText}>{contentTypeLabel[contentType]}</Text>
+              <Feather name="chevron-down" size={13} color={colors.accentPink} />
+            </TouchableOpacity>
           </View>
-        )}
-
-
-        <View style={[styles.optionCard, creationManuallySet && styles.optionCardSelected]}>
-          <TouchableOpacity
-            style={styles.dateCardMain}
-            onPress={handlePressCreation}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.iconContainer, creationManuallySet ? styles.iconContainerSelected : styles.iconContainerOutline]}>
-              <Feather name="calendar" size={20} color={creationManuallySet ? colors.white : colors.accentPink} />
-            </View>
-            <View style={styles.optionTextContainer}>
-              <Text style={styles.optionTitle}>Creation Date & Time</Text>
-              <Text style={styles.optionSubtitle}>
-                {!creationManuallySet ? "Current time (tap to change)" : formatDateTime(creationTime)}
-              </Text>
-            </View>
-          </TouchableOpacity>
-          {creationManuallySet && (
-            <TouchableOpacity onPress={handleClearCreation} style={styles.clearBtn} hitSlop={8}>
-              <Feather name="x" size={16} color={colors.muted} />
+          {contentType === "text" && (
+            <TextInput
+              style={[styles.input, styles.textArea]}
+              placeholder="What do you want to share?"
+              placeholderTextColor={colors.lightMuted}
+              value={content}
+              onChangeText={setContent}
+              multiline
+              textAlignVertical="top"
+            />
+          )}
+          {contentType === "file" && (
+            <TouchableOpacity style={[styles.input, styles.filePlaceholder]} activeOpacity={0.7}>
+              <Feather name="upload" size={22} color={colors.accentPink} />
+              <Text style={styles.filePlaceholderText}>Tap to attach a file</Text>
+              <Text style={styles.filePlaceholderSub}>PDF, image, audio, etc.</Text>
             </TouchableOpacity>
           )}
-        </View>
-
-        {Platform.OS === 'ios' && showCreationPicker && (
-          <DateTimePicker
-            value={creationTime}
-            mode="datetime"
-            display="default"
-            onChange={(e, d) => {
-              if (e.type === 'set' && d) {
-                handleSetCreation(d);
-              }
-              setShowCreationPicker(false);
-            }}
-          />
-        )}
-
-        <View style={[styles.optionCard, !!expiryTime && styles.optionCardSelected]}>
-          <TouchableOpacity
-            style={styles.dateCardMain}
-            onPress={handlePressExpiry}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.iconContainer, expiryTime ? styles.iconContainerSelected : styles.iconContainerOutline]}>
-              <Feather name="calendar" size={20} color={expiryTime ? colors.white : colors.accentPink} />
-            </View>
-            <View style={styles.optionTextContainer}>
-              <Text style={styles.optionTitle}>Expiry Date & Time</Text>
-              <Text style={styles.optionSubtitle}>
-                {expiryTime ? formatDateTime(expiryTime) : "Set specific expiry (optional)"}
-              </Text>
-            </View>
-          </TouchableOpacity>
-          {expiryTime && (
-            <TouchableOpacity onPress={handleClearExpiry} style={styles.clearBtn} hitSlop={8}>
-              <Feather name="x" size={16} color={colors.muted} />
-            </TouchableOpacity>
+          {contentType === "link" && (
+            <TextInput
+              style={styles.input}
+              placeholder="https://..."
+              placeholderTextColor="#9ca3af"
+              value={content}
+              onChangeText={setContent}
+              keyboardType="url"
+              autoCapitalize="none"
+            />
           )}
-        </View>
 
-        {Platform.OS === 'ios' && showExpiryPicker && (
-          <DateTimePicker
-            value={expiryTime || new Date()}
-            mode="datetime"
-            display="default"
-            minimumDate={new Date()}
-            onChange={(e, d) => {
-              if (e.type === 'set' && d) handleSetExpiry(d);
-              setShowExpiryPicker(false);
-            }}
+          {/* VISIBILITY UI */}
+          <Text style={styles.sectionLabel}>Who can unlock this?</Text>
+          <VisibilityOption id="Public" title="Public" subtitle="Anyone can unlock" icon="globe" />
+          <VisibilityOption id="Circle" title="Circle" subtitle="Only specific groups" icon="users" />
+          <VisibilityOption id="Private" title="Private" subtitle="Only you" icon="lock" />
+
+
+          {/* DATE AND TIME FOR CREATION/EXPIRY UI */}
+          <Text style={styles.sectionLabel}>Expiry Settings</Text>
+          {dateError && (
+            <View style={styles.errorBanner}>
+              <Feather name="alert-circle" size={14} color={colors.error} />
+              <Text style={styles.errorText}>{dateError}</Text>
+            </View>
+          )}
+
+
+          <View style={[styles.optionCard, creationManuallySet && styles.optionCardSelected]}>
+            <TouchableOpacity
+              style={styles.dateCardMain}
+              onPress={handlePressCreation}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.iconContainer, creationManuallySet ? styles.iconContainerSelected : styles.iconContainerOutline]}>
+                <Feather name="calendar" size={20} color={creationManuallySet ? colors.white : colors.accentPink} />
+              </View>
+              <View style={styles.optionTextContainer}>
+                <Text style={styles.optionTitle}>Creation Date & Time</Text>
+                <Text style={styles.optionSubtitle}>
+                  {!creationManuallySet ? "Current time (tap to change)" : formatDateTime(creationTime)}
+                </Text>
+              </View>
+            </TouchableOpacity>
+            {creationManuallySet && (
+              <TouchableOpacity onPress={handleClearCreation} style={styles.clearBtn} hitSlop={8}>
+                <Feather name="x" size={16} color={colors.muted} />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {Platform.OS === 'ios' && showCreationPicker && (
+            <DateTimePicker
+              value={creationTime}
+              mode="datetime"
+              display="default"
+              onChange={(e, d) => {
+                if (e.type === 'set' && d) {
+                  handleSetCreation(d);
+                }
+                setShowCreationPicker(false);
+              }}
+            />
+          )}
+
+          <View style={[styles.optionCard, !!expiryTime && styles.optionCardSelected]}>
+            <TouchableOpacity
+              style={styles.dateCardMain}
+              onPress={handlePressExpiry}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.iconContainer, expiryTime ? styles.iconContainerSelected : styles.iconContainerOutline]}>
+                <Feather name="calendar" size={20} color={expiryTime ? colors.white : colors.accentPink} />
+              </View>
+              <View style={styles.optionTextContainer}>
+                <Text style={styles.optionTitle}>Expiry Date & Time</Text>
+                <Text style={styles.optionSubtitle}>
+                  {expiryTime ? formatDateTime(expiryTime) : "Set specific expiry (optional)"}
+                </Text>
+              </View>
+            </TouchableOpacity>
+            {expiryTime && (
+              <TouchableOpacity onPress={handleClearExpiry} style={styles.clearBtn} hitSlop={8}>
+                <Feather name="x" size={16} color={colors.muted} />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {Platform.OS === 'ios' && showExpiryPicker && (
+            <DateTimePicker
+              value={expiryTime || new Date()}
+              mode="datetime"
+              display="default"
+              minimumDate={new Date()}
+              onChange={(e, d) => {
+                if (e.type === 'set' && d) handleSetExpiry(d);
+                setShowExpiryPicker(false);
+              }}
+            />
+          )}
+
+          {/* MAX UNLOCK COUNT */}
+          <Text style={styles.label}>Max Unlock Count</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Unlimited (leave blank)"
+            placeholderTextColor={colors.lightMuted}
+            value={maxUnlock}
+            onChangeText={setMaxUnlock}
+            keyboardType="number-pad"
           />
-        )}
 
-        {/* MAX UNLOCK COUNT */}
-        <Text style={styles.label}>Max Unlock Count</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Unlimited (leave blank)"
-          placeholderTextColor={colors.lightMuted}
-          value={maxUnlock}
-          onChangeText={setMaxUnlock}
-          keyboardType="number-pad"
-        />
-
-        {/* TAGS UI TODO*/}
-        <View style={styles.tagsHeader}>
-          <Text style={styles.tagsTitle}>Tags</Text>
-          <Text style={styles.optionalText}>(Optional)</Text>
-        </View>
+          {/* TAGS UI*/}
+          <View style={styles.tagsHeader}>
+            <View>
+              <Text style={styles.tagsTitle}>Tags</Text>
+              <Text style={styles.tagsSubtitle}>Help people discover your anchor</Text>
+            </View>
+            <View style={styles.tagsCountBadge}>
+              <Text style={styles.tagsCountText}>{tags.length}/8</Text>
+            </View>
+          </View>
+          {tags.length > 0 && (
+            <View style={styles.tagChipsRow}>
+              {tags.map((tag) => (
+                <View key={tag} style={styles.tagChip}>
+                  <Text style={styles.tagChipText}>#{tag}</Text>
+                  <TouchableOpacity onPress={() => removeTag(tag)} hitSlop={6} style={styles.tagRemoveBtn}>
+                    <Feather name="x" size={11} color={colors.accentPink} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
+          {tags.length < 8 && (
+            <View style={[styles.tagInputWrapper, tagInputFocused && styles.tagInputWrapperFocused]}>
+              <Feather name="hash" size={15} color={colors.accentPink} style={{ marginRight: 6 }} />
+              <TextInput
+                style={styles.tagInput}
+                placeholder="Add a tag…"
+                placeholderTextColor={colors.lightMuted}
+                value={tagInput}
+                onChangeText={setTagInput}
+                onFocus={() => setTagInputFocused(true)}
+                onBlur={() => setTagInputFocused(false)}
+                onSubmitEditing={handleTagInputSubmit}
+                returnKeyType="done"
+                autoCapitalize="none"
+              />
+              {tagInput.trim().length > 0 && (
+                <TouchableOpacity onPress={handleTagInputSubmit} style={styles.tagAddBtn}>
+                  <Text style={styles.tagAddBtnText}>Add</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+          <Text style={styles.suggestedLabel}>Suggested</Text>
+          <View style={styles.suggestedRow}>
+            {SUGGESTED_TAGS.filter((t) => !tags.includes(t)).map((tag) => (
+              <TouchableOpacity
+                key={tag}
+                style={[styles.suggestedChip, tags.length >= 8 && styles.suggestedChipDisabled]}
+                onPress={() => addTag(tag)}
+                activeOpacity={0.7}
+                disabled={tags.length >= 8}
+              >
+                <Feather name="plus" size={11} color={colors.muted} style={{ marginRight: 3 }} />
+                <Text style={styles.suggestedChipText}>{tag}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </ScrollView>
 
         {/* DROP ANCHOR AND HANDLE REST */}
@@ -453,156 +529,156 @@ export default function AnchorCreation({ navigation, route }: Props) {
             onPress={handleDropAnchor}
             activeOpacity={0.8}
           >
-            <Text style={styles.submitButtonText}>Drop Anchor</Text>
+            <Text style={styles.submitButtonText}>
+              {isSubmitting ? "Dropping…" : "Drop Anchor"}
+            </Text>
           </TouchableOpacity>
         </View>
 
-      {/* CIRCLE PICKER MODAL */}
+        {/* CIRCLE PICKER MODAL */}
         <Modal
-        visible={showCircleModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowCircleModal(false)}
+          visible={showCircleModal}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowCircleModal(false)}
         >
-        <Pressable style={styles.modalOverlay} onPress={() => setShowCircleModal(false)}>
-          <Pressable style={styles.bottomSheet} onPress={(e) => e.stopPropagation()}>
-            {/* Handle */}
-            <View style={styles.sheetHandle} />
+          <Pressable style={styles.modalOverlay} onPress={() => setShowCircleModal(false)}>
+            <Pressable style={styles.bottomSheet} onPress={(e) => e.stopPropagation()}>
+              {/* Handle */}
+              <View style={styles.sheetHandle} />
 
-            <View style={styles.sheetHeader}>
-              <Text style={styles.sheetTitle}>Share with Circles</Text>
-              <TouchableOpacity onPress={() => setShowCircleModal(false)}>
-                <Feather name="x" size={20} color={colors.muted} />
-              </TouchableOpacity>
-            </View>
+              <View style={styles.sheetHeader}>
+                <Text style={styles.sheetTitle}>Share with Circles</Text>
+                <TouchableOpacity onPress={() => setShowCircleModal(false)}>
+                  <Feather name="x" size={20} color={colors.muted} />
+                </TouchableOpacity>
+              </View>
 
-            <Text style={styles.sheetSubtitle}>
-              Select the circles that can unlock this anchor
-            </Text>
-
-            <ScrollView style={styles.circleList} showsVerticalScrollIndicator={false}>
-              {DUMMY_CIRCLES.map((circle) => {
-                const isChosen = selectedCircles.includes(circle.id);
-                return (
-                  <TouchableOpacity
-                    key={circle.id}
-                    style={styles.circleRow}
-                    onPress={() => toggleCircle(circle.id)}
-                    activeOpacity={0.7}
-                  >
-                    {/* Avatar */}
-                    <View style={styles.circleAvatar}>
-                      <Text style={styles.circleEmoji}>{circle.emoji}</Text>
-                    </View>
-                    {/* Info */}
-                    <View style={styles.circleInfo}>
-                      <Text style={styles.circleName}>{circle.name}</Text>
-                      <Text style={styles.circleMeta}>{circle.memberCount} members</Text>
-                    </View>
-                    {/* Checkbox */}
-                    <View
-                      style={[
-                        styles.circleCheckbox,
-                        isChosen && styles.circleCheckboxSelected,
-                      ]}
-                    >
-                      {isChosen && <Feather name="check" size={13} color={colors.white} />}
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-
-            {/* Done button */}
-            <TouchableOpacity
-              style={[
-                styles.sheetDoneBtn,
-                selectedCircles.length === 0 && styles.sheetDoneBtnDisabled,
-              ]}
-              onPress={() => setShowCircleModal(false)}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.sheetDoneBtnText}>
-                {selectedCircles.length === 0
-                  ? "Select at least one circle"
-                  : `Done · ${selectedCircles.length} selected`}
+              <Text style={styles.sheetSubtitle}>
+                Select the circles that can unlock this anchor
               </Text>
-            </TouchableOpacity>
+
+              <ScrollView style={styles.circleList} showsVerticalScrollIndicator={false}>
+                {DUMMY_CIRCLES.map((circle) => {
+                  const isChosen = selectedCircles.includes(circle.id);
+                  return (
+                    <TouchableOpacity
+                      key={circle.id}
+                      style={styles.circleRow}
+                      onPress={() => toggleCircle(circle.id)}
+                      activeOpacity={0.7}
+                    >
+                      {/* Avatar */}
+                      <View style={styles.circleAvatar}>
+                        <Text style={styles.circleEmoji}>{circle.emoji}</Text>
+                      </View>
+                      {/* Info */}
+                      <View style={styles.circleInfo}>
+                        <Text style={styles.circleName}>{circle.name}</Text>
+                        <Text style={styles.circleMeta}>{circle.memberCount} members</Text>
+                      </View>
+                      {/* Checkbox */}
+                      <View
+                        style={[
+                          styles.circleCheckbox,
+                          isChosen && styles.circleCheckboxSelected,
+                        ]}
+                      >
+                        {isChosen && <Feather name="check" size={13} color={colors.white} />}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
+              {/* Done button */}
+              <TouchableOpacity
+                style={[
+                  styles.sheetDoneBtn,
+                  selectedCircles.length === 0 && styles.sheetDoneBtnDisabled,
+                ]}
+                onPress={() => setShowCircleModal(false)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.sheetDoneBtnText}>
+                  {selectedCircles.length === 0
+                    ? "Select at least one circle"
+                    : `Done · ${selectedCircles.length} selected`}
+                </Text>
+              </TouchableOpacity>
+            </Pressable>
           </Pressable>
-        </Pressable>
         </Modal>
 
         {/* CONTENT TYPE MODAL */}
         <Modal
-        visible={showContentTypeModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowContentTypeModal(false)}
+          visible={showContentTypeModal}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowContentTypeModal(false)}
         >
-        <Pressable style={styles.modalOverlay} onPress={() => setShowContentTypeModal(false)}>
-          <Pressable style={styles.bottomSheetSmall} onPress={(e) => e.stopPropagation()}>
-            <View style={styles.sheetHandle} />
-            <Text style={[styles.sheetTitle, { marginBottom: 4, marginTop: 4 }]}>
-              Content Type
-            </Text>
-            <Text style={[styles.sheetSubtitle, { marginBottom: 16 }]}>
-              Choose how to share your anchor's content
-            </Text>
+          <Pressable style={styles.modalOverlay} onPress={() => setShowContentTypeModal(false)}>
+            <Pressable style={styles.bottomSheetSmall} onPress={(e) => e.stopPropagation()}>
+              <View style={styles.sheetHandle} />
+              <Text style={[styles.sheetTitle, { marginBottom: 4, marginTop: 4 }]}>
+                Content Type
+              </Text>
+              <Text style={[styles.sheetSubtitle, { marginBottom: 16 }]}>
+                Choose how to share your anchor's content
+              </Text>
 
-            {(["text", "file", "link"] as ContentType[]).map((type) => {
-              const isActive = contentType === type;
-              const labels: Record<ContentType, string> = {
-                text: "Text",
-                file: "File Attachment",
-                link: "Link / URL",
-              };
-              const descs: Record<ContentType, string> = {
-                text: "Write a message or note",
-                file: "Attach a document, image, or audio",
-                link: "Share a URL",
-              };
-              return (
-                <TouchableOpacity
-                  key={type}
-                  style={[styles.contentTypeRow, isActive && styles.contentTypeRowActive]}
-                  onPress={() => {
-                    setContentType(type);
-                    setContent("");
-                    setShowContentTypeModal(false);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <View
-                    style={[
-                      styles.iconContainer,
-                      isActive ? styles.iconContainerSelected : styles.iconContainerOutline,
-                    ]}
+              {(["text", "file", "link"] as ContentType[]).map((type) => {
+                const isActive = contentType === type;
+                const labels: Record<ContentType, string> = {
+                  text: "Text",
+                  file: "File Attachment",
+                  link: "Link / URL",
+                };
+                const descs: Record<ContentType, string> = {
+                  text: "Write a message or note",
+                  file: "Attach a document, image, or audio",
+                  link: "Share a URL",
+                };
+                return (
+                  <TouchableOpacity
+                    key={type}
+                    style={[styles.contentTypeRow, isActive && styles.contentTypeRowActive]}
+                    onPress={() => {
+                      setContentType(type);
+                      setContent("");
+                      setShowContentTypeModal(false);
+                    }}
+                    activeOpacity={0.7}
                   >
-                    <Feather
-                      name={contentTypeIcon[type]}
-                      size={20}
-                      color={isActive ? colors.white : colors.accentPink}
-                    />
-                  </View>
-                  <View style={styles.optionTextContainer}>
-                    <Text style={styles.optionTitle}>{labels[type]}</Text>
-                    <Text style={styles.optionSubtitle}>{descs[type]}</Text>
-                  </View>
-                  {isActive && (
-                    <Feather name="check-circle" size={20} color={colors.accentPink} />
-                  )}
-                </TouchableOpacity>
-              );
-            })}
+                    <View
+                      style={[
+                        styles.iconContainer,
+                        isActive ? styles.iconContainerSelected : styles.iconContainerOutline,
+                      ]}
+                    >
+                      <Feather
+                        name={contentTypeIcon[type]}
+                        size={20}
+                        color={isActive ? colors.white : colors.accentPink}
+                      />
+                    </View>
+                    <View style={styles.optionTextContainer}>
+                      <Text style={styles.optionTitle}>{labels[type]}</Text>
+                      <Text style={styles.optionSubtitle}>{descs[type]}</Text>
+                    </View>
+                    {isActive && (
+                      <Feather name="check-circle" size={20} color={colors.accentPink} />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </Pressable>
           </Pressable>
-        </Pressable>
         </Modal>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
-
-// TODO: Clear creation/expiry. Creation b4 expiry. iOS checks. adding circle options to visibility options. Option to change from text to file/link. Tags
 
 const colors = {
   accentWarm: "#F4BB7E",
@@ -770,6 +846,115 @@ const styles = StyleSheet.create({
   },
   errorText: { fontSize: 13, color: colors.error, flex: 1 },
 
+  tagsHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    marginTop: 8,
+    marginBottom: 14,
+  },
+  tagsTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: colors.text
+  },
+  tagsSubtitle: {
+    fontSize: 13,
+    color: colors.lightMuted,
+    marginTop: 2
+  },
+  tagsCountBadge: {
+    backgroundColor: "#f3f4f6",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginTop: 2,
+  },
+  tagsCountText: {
+    fontSize: 13,
+    color: colors.muted,
+    fontWeight: "600"
+  },
+
+  tagChipsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap", gap: 8,
+    marginBottom: 12
+  },
+  tagChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: colors.selectedCanvas,
+    borderWidth: 1,
+    borderColor: colors.accentPink,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  tagChipText: {
+    fontSize: 13,
+    color: colors.accentPink,
+    fontWeight: "500"
+  },
+  tagRemoveBtn: { marginLeft: 2 },
+
+  tagInputWrapper: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 12,
+    backgroundColor: colors.canvas,
+  },
+  tagInputWrapperFocused: { borderColor: colors.accentPink },
+  tagInput: {
+    flex: 1,
+    fontSize: 15,
+    color: colors.text
+  },
+  tagAddBtn: {
+    backgroundColor: colors.accentPink,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 12
+  },
+  tagAddBtnText: {
+    color: colors.white,
+    fontSize: 13,
+    fontWeight: "600"
+  },
+
+  suggestedLabel: {
+    fontSize: 13,
+    color: colors.muted,
+    marginBottom: 8
+  },
+  suggestedRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 24
+  },
+  suggestedChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+    backgroundColor: colors.canvas,
+  },
+  suggestedChipDisabled: { opacity: 0.4 },
+  suggestedChipText: {
+    fontSize: 12,
+    color: colors.muted
+  },
+
   footer: {
     paddingHorizontal: 20,
     paddingTop: 16,
@@ -789,23 +974,6 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: 16,
     fontWeight: "600",
-  },
-  tagsHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 24,
-    marginBottom: 12,
-  },
-  tagsTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: colors.text,
-  },
-  optionalText: {
-    fontSize: 14,
-    color: colors.lightMuted,
-    marginLeft: 8,
-    fontStyle: "italic",
   },
   modalOverlay: {
     flex: 1,
