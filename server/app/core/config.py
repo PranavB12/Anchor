@@ -29,12 +29,14 @@ class Settings(BaseSettings):
 
     # ── Password Reset ────────────────────────────────────────────────────────
     PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 30
+    PASSWORD_RESET_DEEP_LINK_BASE: str = "anchor://reset-password"
 
     # ── Email (SMTP) ──────────────────────────────────────────────────────────
     SMTP_HOST: Optional[str] = None
     SMTP_PORT: int = 587
     SMTP_USER: Optional[str] = None
     SMTP_PASSWORD: Optional[str] = None
+    SMTP_USE_STARTTLS: bool = True
     EMAILS_FROM_EMAIL: str = "no-reply@anchor.app"
     EMAILS_FROM_NAME: str = "Anchor"
 
