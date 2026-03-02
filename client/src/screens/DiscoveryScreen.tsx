@@ -445,9 +445,10 @@ export default function DiscoveryScreen() {
           </View>
           <TouchableOpacity
             style={styles.profileButton}
-            onPress={() =>
-              Alert.alert("Profile", `Signed in as ${session?.username ?? "User"}`)
-            }
+            //onPress={() =>
+            //  Alert.alert("Profile", `Signed in as ${session?.username ?? "User"}`)
+            //}
+            onPress={() => navigation.navigate("EditProfile")}
           >
             <Text style={styles.profileInitial}>{profileInitial}</Text>
           </TouchableOpacity>
