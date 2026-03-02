@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from typing import Optional
+from typing import Optional, Set
 
 
 class Settings(BaseSettings):
@@ -41,6 +41,16 @@ class Settings(BaseSettings):
     # ── OAuth ─────────────────────────────────────────────────────────────────
     GOOGLE_CLIENT_ID: Optional[str] = None
     GOOGLE_CLIENT_SECRET: Optional[str] = None
+    GOOGLE_CLIENT_IDS: Optional[str] = None  # comma-separated list
+
+    @property
+    def GOOGLE_ALLOWED_CLIENT_IDS(self) -> Set[str]:
+        configured_ids = []
+        if self.GOOGLE_CLIENT_ID:
+            configured_ids.append(self.GOOGLE_CLIENT_ID)
+        if self.GOOGLE_CLIENT_IDS:
+            configured_ids.extend(self.GOOGLE_CLIENT_IDS.split(","))
+        return {value.strip() for value in configured_ids if value and value.strip()}
 
     # ── AWS S3 ────────────────────────────────────────────────────────────────
     AWS_ACCESS_KEY_ID: Optional[str] = None

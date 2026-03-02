@@ -20,7 +20,7 @@ import DateTimePicker, {
   DateTimePickerEvent
 } from "@react-native-community/datetimepicker";
 type Props = NativeStackScreenProps<RootStackParamList, "AnchorCreation">;
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 
 // Dummy circle. TODO: CHANGE THEM LATER TO GET FROM BACKEND!!!
@@ -224,15 +224,16 @@ export default function AnchorCreation({ navigation }: Props) {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      style={styles.screen}
-    >
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
+    <SafeAreaView edges={["top", "left", "right"]} style={styles.screen}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={styles.screen}
       >
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
         {/* TITLE UI */}
         <Text style={styles.label}>Title</Text>
         <TextInput
@@ -386,26 +387,26 @@ export default function AnchorCreation({ navigation }: Props) {
           <Text style={styles.tagsTitle}>Tags</Text>
           <Text style={styles.optionalText}>(Optional)</Text>
         </View>
-      </ScrollView>
+        </ScrollView>
 
-      {/* DROP ANCHOR AND HANDLE REST */}
-      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, Platform.OS === "ios" ? 34 : 24) }]}>
-        <TouchableOpacity
-          style={[styles.submitButton, !!dateError && styles.submitButtonDisabled]}
-          onPress={handleDropAnchor}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.submitButtonText}>Drop Anchor</Text>
-        </TouchableOpacity>
-      </View>
+        {/* DROP ANCHOR AND HANDLE REST */}
+        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, Platform.OS === "ios" ? 34 : 24) }]}>
+          <TouchableOpacity
+            style={[styles.submitButton, !!dateError && styles.submitButtonDisabled]}
+            onPress={handleDropAnchor}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.submitButtonText}>Drop Anchor</Text>
+          </TouchableOpacity>
+        </View>
 
       {/* CIRCLE PICKER MODAL */}
-      <Modal
+        <Modal
         visible={showCircleModal}
         transparent
         animationType="slide"
         onRequestClose={() => setShowCircleModal(false)}
-      >
+        >
         <Pressable style={styles.modalOverlay} onPress={() => setShowCircleModal(false)}>
           <Pressable style={styles.bottomSheet} onPress={(e) => e.stopPropagation()}>
             {/* Handle */}
@@ -472,15 +473,15 @@ export default function AnchorCreation({ navigation }: Props) {
             </TouchableOpacity>
           </Pressable>
         </Pressable>
-      </Modal>
+        </Modal>
 
-      {/* CONTENT TYPE MODAL */}
-      <Modal
+        {/* CONTENT TYPE MODAL */}
+        <Modal
         visible={showContentTypeModal}
         transparent
         animationType="slide"
         onRequestClose={() => setShowContentTypeModal(false)}
-      >
+        >
         <Pressable style={styles.modalOverlay} onPress={() => setShowContentTypeModal(false)}>
           <Pressable style={styles.bottomSheetSmall} onPress={(e) => e.stopPropagation()}>
             <View style={styles.sheetHandle} />
@@ -538,8 +539,9 @@ export default function AnchorCreation({ navigation }: Props) {
             })}
           </Pressable>
         </Pressable>
-      </Modal>
-    </KeyboardAvoidingView>
+        </Modal>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 

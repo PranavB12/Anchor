@@ -242,7 +242,8 @@ def oauth_login(payload: OAuthRequest, db: Session = Depends(get_db)):
     # Verify the Google ID token
     try:
         response = httpx.get(
-            f"https://oauth2.googleapis.com/tokeninfo?id_token={payload.id_token}"
+            f"https://oauth2.googleapis.com/tokeninfo?id_token={payload.id_token}",
+            timeout=10.0,
         )
         if response.status_code != 200:
             raise HTTPException(
@@ -256,15 +257,32 @@ def oauth_login(payload: OAuthRequest, db: Session = Depends(get_db)):
             detail="Could not reach Google OAuth service",
         )
 
+    audience = google_data.get("aud")
+    allowed_client_ids = settings.GOOGLE_ALLOWED_CLIENT_IDS
+    if allowed_client_ids and audience not in allowed_client_ids:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Google token audience does not match configured client IDs",
+        )
+
+    email_verified = str(google_data.get("email_verified", "")).lower() == "true"
+    if not email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Google account email is not verified",
+        )
+
     google_id = google_data.get("sub")
     email = google_data.get("email")
-    name = google_data.get("name", "").replace(" ", "_").lower()
 
     if not google_id or not email:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Could not retrieve email from Google token",
         )
+
+    display_name = google_data.get("name") or email.split("@")[0]
+    name = display_name.replace(" ", "_").lower()
 
     # Check if user already exists
     user = _get_user_by_email(db, email)
@@ -277,6 +295,8 @@ def oauth_login(payload: OAuthRequest, db: Session = Depends(get_db)):
 
         # Generate unique username from Google name
         base_username = name[:47] if len(name) > 47 else name
+        if not base_username:
+            base_username = f"user_{uuid.uuid4().hex[:8]}"
         username = base_username
         counter = 1
         while db.execute(

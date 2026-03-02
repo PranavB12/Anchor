@@ -1,9 +1,13 @@
 import { Platform } from "react-native";
 
-// Android emulators cannot reach the host machine via 127.0.0.1.
-// Use "adb reverse tcp:8000 tcp:8000" to reach the host machine via 127.0.0.1:8000
+// Put this in your .env as your Mac's IP address
+const envBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
+
+// For Android, use "adb reverse tcp:8000 tcp:8000" to reach the host machine via 127.0.0.1:8000
 const API_BASE_URL =
-  "http://127.0.0.1:8000";
+  envBaseUrl && envBaseUrl.length > 0
+    ? envBaseUrl
+    : "http://127.0.0.1:8000";
 
 type HttpMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 
