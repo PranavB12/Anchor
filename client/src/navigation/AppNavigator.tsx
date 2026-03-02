@@ -8,16 +8,23 @@ import RegisterScreen from "../screens/RegisterScreen";
 import DiscoveryScreen from "../screens/DiscoveryScreen";
 import MapScreen from "../screens/MapScreen";
 import AnchorCreation from "../screens/AnchorCreation";
+import ForgotPasswordScreen from "../screens/ForgotPasswordScreen";
+import ResetPasswordScreen from "../screens/ResetPasswordScreen";
+import EditProfileScreen from "../screens/EditProfileScreen";
 
 export type RootStackParamList = {
   Login: undefined;
   Register: undefined;
+  ForgotPassword: undefined;
+  ResetPassword: { token: string };
   Discovery: undefined;
   Map: undefined;
   AnchorCreation: { latitude: number; longitude: number; radius: number };
+  EditProfile: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+
 const colors = {
   accentWarm: "#F4BB7E",
   accentPink: "#F55476",
@@ -32,6 +39,7 @@ const colors = {
   success: "#027a48",
   blue: "#4285F4",
 };
+
 export default function AppNavigator() {
   const { status, session } = useAuth();
 
@@ -50,43 +58,24 @@ export default function AppNavigator() {
         initialRouteName={status === "authenticated" ? "Discovery" : "Login"}
         screenOptions={{
           headerTitleAlign: "center",
-          headerStyle: {
-            backgroundColor: colors.canvas,
-          },
+          headerStyle: { backgroundColor: colors.canvas },
           headerTintColor: colors.text,
           headerShown: false,
         }}
       >
         {status === "authenticated" && session ? (
           <>
-            <Stack.Screen
-              name="Discovery"
-              component={DiscoveryScreen}
-              options={{ title: "Discover" }}
-            />
-            <Stack.Screen
-              name="Map"
-              component={MapScreen}
-              options={{ title: "Anchor Map" }}
-            />
-            <Stack.Screen
-              name="AnchorCreation"
-              component={AnchorCreation}
-              options={{ title: "Anchor Details" }}
-            />
+            <Stack.Screen name="Discovery" component={DiscoveryScreen} options={{ title: "Discover" }} />
+            <Stack.Screen name="Map" component={MapScreen} options={{ title: "Anchor Map" }} />
+            <Stack.Screen name="AnchorCreation" component={AnchorCreation} options={{ title: "Anchor Details" }} />
+            <Stack.Screen name="EditProfile" component={EditProfileScreen} options={{ title: "Edit Profile" }} />
           </>
         ) : (
           <>
-            <Stack.Screen
-              name="Login"
-              component={LoginScreen}
-              options={{ title: "Anchor Login" }}
-            />
-            <Stack.Screen
-              name="Register"
-              component={RegisterScreen}
-              options={{ title: "Create Account" }}
-            />
+            <Stack.Screen name="Login" component={LoginScreen} options={{ title: "Anchor Login" }} />
+            <Stack.Screen name="Register" component={RegisterScreen} options={{ title: "Create Account" }} />
+            <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} options={{ title: "Forgot Password" }} />
+            <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} options={{ title: "Reset Password" }} />
           </>
         )}
       </Stack.Navigator>
