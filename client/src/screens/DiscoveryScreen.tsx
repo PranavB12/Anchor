@@ -20,6 +20,7 @@ import {
   TouchableWithoutFeedback,
   useWindowDimensions,
   View,
+  Image,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -29,11 +30,12 @@ import {
   getNearbyAnchors,
   type NearbyAnchor,
 } from "../services/anchorService";
+import circle from "@turf/circle";
+import Slider from "@react-native-community/slider";
 
 type Coordinate = [number, number];
 
 type AnchorWithDerivedFields = NearbyAnchor & {
-  distanceMeters: number;
   isUnlocked: boolean;
   lockLabel: string;
   visibilityLabel: string;
@@ -60,45 +62,25 @@ const colors = {
 const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN;
 Mapbox.setAccessToken(MAPBOX_TOKEN ?? "");
 
-function clamp(value: number, min: number, max: number) {
-  return Math.min(Math.max(value, min), max);
-}
-
-function toRadians(value: number) {
-  return (value * Math.PI) / 180;
-}
-
-function haversineDistanceMeters(
-  fromLat: number,
-  fromLon: number,
-  toLat: number,
-  toLon: number,
-) {
-  const earthRadiusMeters = 6_371_000;
-  const dLat = toRadians(toLat - fromLat);
-  const dLon = toRadians(toLon - fromLon);
-
-  const lat1 = toRadians(fromLat);
-  const lat2 = toRadians(toLat);
-
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.sin(dLon / 2) * Math.sin(dLon / 2) * Math.cos(lat1) * Math.cos(lat2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return earthRadiusMeters * c;
-}
-
-function formatDistance(distanceMeters: number) {
-  if (distanceMeters < 1000) {
-    return `${Math.round(distanceMeters)} m`;
+const RADIUS_FACTS: [number, number, string[]][] = [
+  [10, 15, ["~1 T-Rex lying down 🦕", "~5 Shaqs 🏀"]],
+  [16, 25, ["a bowling lane 🎳", "~4 giraffes laid sideways 🦒", "a tennis court 🎾"]],
+  [26, 40, ["one blue whale 🐋", "how far a snail can travel in a day 🐌"]],
+  [41, 60, ["~10 sedans 🚗", "1 Olympic pools 🏊", "a very ambitious snowball throw ❄️"]],
+  [61, 80, ["average frisbee throws 🥏"]],
+  [81, 100, ["the Statue of Liberty tipped over 🗽", "one really committed javelin throw 🥇", "the best paper airplane throw ✈️"]],
+  [101, 130, ["a full football field 🏈", "~10 double-decker buses 🚌"]],
+  [131, 160, ["~2 Doors to Hell 🚪"]],
+  [161, 200, ["the world's longest hot dog"]],
+];
+function getRadiusFact(meters: number): string {
+  for (const [min, max, labels] of RADIUS_FACTS) {
+    if (meters >= min && meters <= max) {
+      const idx = Math.floor(((meters - min) / (max - min + 1)) * labels.length);
+      return labels[Math.min(idx, labels.length - 1)];
+    }
   }
-  return `${(distanceMeters / 1000).toFixed(1)} km`;
-}
-
-function formatVisibility(value: NearbyAnchor["visibility"]) {
-  if (value === "CIRCLE_ONLY") return "Circle";
-  if (value === "PRIVATE") return "Private";
-  return "Public";
+  return `${meters}m`;
 }
 
 function formatDateTime(value: string | null) {
@@ -108,7 +90,17 @@ function formatDateTime(value: string | null) {
   return date.toLocaleString();
 }
 
-function getLockMeta(anchor: NearbyAnchor, distanceMeters: number) {
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function formatVisibility(value: NearbyAnchor["visibility"]) {
+  if (value === "CIRCLE_ONLY") return "Circle";
+  if (value === "PRIVATE") return "Private";
+  return "Public";
+}
+
+function getLockMeta(anchor: NearbyAnchor) {
   if (anchor.status !== "ACTIVE") {
     return {
       isUnlocked: false,
@@ -116,19 +108,11 @@ function getLockMeta(anchor: NearbyAnchor, distanceMeters: number) {
     };
   }
 
-  if (distanceMeters <= anchor.unlock_radius) {
-    return {
-      isUnlocked: true,
-      label: "Unlocked",
-    };
-  }
-
   return {
-    isUnlocked: false,
-    label: "Locked",
+    isUnlocked: true,
+    label: "Unlocked",
   };
 }
-
 function AnchorRowCard({
   anchor,
   onPress,
@@ -151,8 +135,12 @@ function AnchorRowCard({
 
       <View style={styles.anchorRowMiddle}>
         <View style={styles.infoChip}>
-          <Feather name="map-pin" size={13} color={colors.muted} />
-          <Text style={styles.infoChipText}>{formatDistance(anchor.distanceMeters)}</Text>
+          <Feather
+            name="map-pin"
+            size={13}
+            color={colors.muted}
+          />
+          <Text style={styles.infoChipText}>{"- km"}</Text>
         </View>
         <View
           style={[
@@ -162,8 +150,8 @@ function AnchorRowCard({
         >
           <Feather
             name={anchor.isUnlocked ? "unlock" : "lock"}
+            color={anchor.isUnlocked ? colors.success : colors.muted}
             size={13}
-            color={anchor.isUnlocked ? colors.success : colors.accentPink}
           />
           <Text
             style={[
@@ -198,6 +186,10 @@ export default function DiscoveryScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
+
+  const [anchorLocation, setAnchorLocation] = useState<Coordinate | null>(null);
+  const [radius, setRadius] = useState(50);
+
 
   const collapsedHeight = 116;
   const expandedHeight = Math.min(windowHeight * 0.72, windowHeight - 128);
@@ -284,7 +276,7 @@ export default function DiscoveryScreen() {
     [animateSheet, collapseOffset, isExpanded, sheetTranslateY],
   );
 
-  const loadNearby = useCallback(async () => {
+  const loadAnchors = useCallback(async () => {
     const token = session?.access_token;
     if (!token) return;
 
@@ -292,50 +284,26 @@ export default function DiscoveryScreen() {
     setErrorMessage(null);
 
     try {
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (permission.status !== "granted") {
-        setErrorMessage("Location permission is required to discover nearby anchors.");
-        return;
-      }
-
-      const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-
-      const userLat = location.coords.latitude;
-      const userLon = location.coords.longitude;
-      setUserCoordinate([userLon, userLat]);
 
       const response = await getNearbyAnchors(
         {
-          lat: userLat,
-          lon: userLon,
-          radiusKm: 5,
+          lat: FALLBACK_CENTER[1],
+          lon: FALLBACK_CENTER[0],
+          radiusKm: 1000,
           sortBy: "distance",
         },
         token,
       );
-
-      const mapped = response
-        .map<AnchorWithDerivedFields>((anchor) => {
-          const distanceMeters = haversineDistanceMeters(
-            userLat,
-            userLon,
-            anchor.latitude,
-            anchor.longitude,
-          );
-          const lockMeta = getLockMeta(anchor, distanceMeters);
-
-          return {
-            ...anchor,
-            distanceMeters,
-            isUnlocked: lockMeta.isUnlocked,
-            lockLabel: lockMeta.label,
-            visibilityLabel: formatVisibility(anchor.visibility),
-            primaryTag: anchor.tags?.[0] ?? null,
-          };
-        })
-        .sort((first, second) => first.distanceMeters - second.distanceMeters);
+      const mapped = response.map<AnchorWithDerivedFields>((anchor) => {
+        const lockMeta = getLockMeta(anchor);
+        return {
+          ...anchor,
+          isUnlocked: lockMeta.isUnlocked,
+          lockLabel: lockMeta.label,
+          visibilityLabel: formatVisibility(anchor.visibility),
+          primaryTag: anchor.tags?.[0] ?? null,
+        };
+      });
 
       setAnchors(mapped);
     } catch (error) {
@@ -348,8 +316,8 @@ export default function DiscoveryScreen() {
   }, [session?.access_token]);
 
   useEffect(() => {
-    void loadNearby();
-  }, [loadNearby]);
+    void loadAnchors();
+  }, [loadAnchors]);
 
   const filteredAnchors = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -384,6 +352,7 @@ export default function DiscoveryScreen() {
     setSelectedAnchorId(null);
   }, []);
 
+
   const collapseSheet = useCallback(() => {
     Keyboard.dismiss();
     listScrollOffset.current = 0;
@@ -391,97 +360,152 @@ export default function DiscoveryScreen() {
     animateSheet(false);
   }, [animateSheet]);
 
+  const handleDropAnchor = async () => {
+    let { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Denied', 'Allow location access to drop an anchor.');
+      return;
+    }
+
+    let location = await Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.High,
+    });
+    setAnchorLocation([location.coords.longitude, location.coords.latitude]);
+    setUserCoordinate([location.coords.longitude, location.coords.latitude]);
+
+    animateSheet(true);
+  };
+
+  const cancelDropAnchor = () => {
+    setAnchorLocation(null);
+    animateSheet(false);
+  };
+
+  const radiusShape = useMemo(() => {
+    if (!anchorLocation) return undefined;
+    return circle(anchorLocation, radius, { steps: 64, units: 'meters' });
+  }, [anchorLocation, radius]);
+
+  const handleAnchorPress = (anchor: typeof anchors[0]) => {
+    // TODO: CHECK IF THIS IS YOUR ANCHOR OR NOT.
+    Alert.alert("Your Anchor", undefined, [
+      {
+        text: "Edit Anchor",
+        onPress: () => navigation.navigate("EditAnchor", { anchorId: anchor.anchor_id }),
+      },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  };
+
+
   const profileInitial = (session?.username ?? "U").charAt(0).toUpperCase();
 
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-      <View style={styles.screen}>
-        <Mapbox.MapView style={styles.map} styleURL={Mapbox.StyleURL.Light}>
-          <Mapbox.Camera
-            zoomLevel={14}
-            centerCoordinate={userCoordinate ?? FALLBACK_CENTER}
-            animationDuration={1000}
-          />
+    <View style={styles.screen}>
+      <Mapbox.MapView style={styles.map} styleURL={Mapbox.StyleURL.Light}>
+        <Mapbox.Camera
+          zoomLevel={14}
+          centerCoordinate={userCoordinate ?? FALLBACK_CENTER}
+          animationDuration={1000}
+        />
 
-          {userCoordinate ? (
-            <Mapbox.MarkerView id="user-location" coordinate={userCoordinate}>
-              <View style={styles.userDot} />
+        {!anchorLocation && filteredAnchors.map((anchor) => (
+          <Mapbox.MarkerView
+            key={anchor.anchor_id}
+            id={`marker-${anchor.anchor_id}`}
+            coordinate={[anchor.longitude, anchor.latitude]}
+          >
+            <TouchableOpacity
+              onPress={() => handleAnchorPress(anchor)}
+              style={styles.mapMarker}
+            >
+              <View style={styles.markerWrapper}>
+                <Image
+                  source={anchor.isUnlocked ? require('../../assets/unlocked.png') : require('../../assets/locked_p2.png')}
+                  style={styles.markerImage}
+                />
+                {/* TODO: ONCE LOGIC FOR OWN ANCHOR IS DONE, UNCOMMENT BOTTOM THING */}
+                {/*{anchor.isOwn && <View style={styles.ownerBadge} />}*/}
+              </View>
+            </TouchableOpacity>
+          </Mapbox.MarkerView>
+        ))}
+
+        {anchorLocation && (
+          <>
+            <Mapbox.ShapeSource id="radius-source" shape={radiusShape}>
+              <Mapbox.FillLayer
+                id="radius-fill"
+                style={{ fillColor: colors.accentPink, fillOpacity: 0.2 }}
+              />
+              <Mapbox.LineLayer
+                id="radius-line"
+                style={{ lineColor: colors.accentPink, lineWidth: 1 }}
+              />
+            </Mapbox.ShapeSource>
+            <Mapbox.MarkerView id="anchor-pin" coordinate={anchorLocation}>
+              <View style={styles.mapMarkerDropped}>
+                <Image source={require('../../assets/unlocked.png')} style={{ width: 40, height: 40 }} />
+              </View>
             </Mapbox.MarkerView>
-          ) : null}
+          </>
+        )}
+      </Mapbox.MapView>
 
-          {filteredAnchors.map((anchor) => (
-            <Mapbox.MarkerView
-              key={anchor.anchor_id}
-              id={`nearby-${anchor.anchor_id}`}
-              coordinate={[anchor.longitude, anchor.latitude]}
+      {
+        !anchorLocation && (
+          <>
+            <View style={[styles.topBar, { top: insets.top + 12 }]}>
+              <View style={styles.searchBar}>
+                <Feather name="search" size={17} color={colors.muted} />
+                <TextInput
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  placeholder="Search nearby anchors"
+                  placeholderTextColor={colors.lightMuted}
+                  style={styles.searchInput}
+                />
+              </View>
+              <TouchableOpacity
+                style={styles.profileButton}
+                onPress={() => navigation.navigate("EditProfile")}
+              >
+                <Text style={styles.profileInitial}>{profileInitial}</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Animated.View
+              style={[
+                styles.addButtonWrap,
+                {
+                  bottom: expandedHeight + insets.bottom + 14,
+                  transform: [{ translateY: sheetTranslateY }],
+                },
+              ]}
             >
               <TouchableOpacity
-                onPress={() => openAnchorDetails(anchor.anchor_id)}
-                style={[
-                  styles.mapMarker,
-                  anchor.isUnlocked ? styles.mapMarkerUnlocked : styles.mapMarkerLocked,
-                ]}
+                style={styles.addButton}
+                onPress={handleDropAnchor}
               >
-                <Feather
-                  name={anchor.isUnlocked ? "unlock" : "lock"}
-                  size={14}
-                  color={colors.white}
-                />
+                <Feather name="plus" size={20} color={colors.white} />
               </TouchableOpacity>
-            </Mapbox.MarkerView>
-          ))}
-        </Mapbox.MapView>
+            </Animated.View>
+          </>
+        )
+      }
 
-        <View style={[styles.topBar, { top: insets.top + 12 }]}>
-          <View style={styles.searchBar}>
-            <Feather name="search" size={17} color={colors.muted} />
-            <TextInput
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholder="Search nearby anchors"
-              placeholderTextColor={colors.lightMuted}
-              style={styles.searchInput}
-            />
-          </View>
-          <TouchableOpacity
-            style={styles.profileButton}
-            //onPress={() =>
-            //  Alert.alert("Profile", `Signed in as ${session?.username ?? "User"}`)
-            //}
-            onPress={() => navigation.navigate("EditProfile")}
-          >
-            <Text style={styles.profileInitial}>{profileInitial}</Text>
-          </TouchableOpacity>
-        </View>
-
-        <Animated.View
-          style={[
-            styles.addButtonWrap,
-            {
-              bottom: expandedHeight + insets.bottom + 14,
-              transform: [{ translateY: sheetTranslateY }],
-            },
-          ]}
-        >
-          <TouchableOpacity
-            style={styles.addButton}
-            onPress={() => navigation.navigate("Map")}
-          >
-            <Feather name="plus" size={20} color={colors.white} />
-          </TouchableOpacity>
-        </Animated.View>
-
-        <Animated.View
-          {...panResponder.panHandlers}
-          style={[
-            styles.bottomSheet,
-            {
-              height: expandedHeight,
-              paddingBottom: Math.max(insets.bottom, 16),
-              transform: [{ translateY: sheetTranslateY }],
-            },
-          ]}
-        >
+      <Animated.View
+        {...panResponder.panHandlers}
+        style={[
+          styles.bottomSheet,
+          {
+            height: anchorLocation ? 320 : expandedHeight,
+            paddingBottom: Math.max(insets.bottom, 16),
+            transform: [{ translateY: anchorLocation ? 0 : sheetTranslateY }],
+          },
+        ]}
+      >
+        {!anchorLocation && (
           <TouchableOpacity
             style={styles.handleTouchArea}
             onPress={() => {
@@ -498,8 +522,54 @@ export default function DiscoveryScreen() {
               <Feather name="chevron-down" size={16} color={colors.muted} />
             ) : null}
           </TouchableOpacity>
+        )}
 
-        {selectedAnchor ? (
+        {anchorLocation ? (
+          <View style={styles.detailContainer}>
+            <View style={styles.radiusHeader}>
+              <Text style={styles.radiusTitle}>Detection Radius</Text>
+              <Text style={styles.radiusValue}>{radius}m</Text>
+            </View>
+
+            <Text style={styles.radiusFact}>≈ {getRadiusFact(radius)}</Text>
+
+            <Slider
+              style={styles.slider}
+              minimumValue={10}
+              maximumValue={200}
+              step={1}
+              value={radius}
+              onValueChange={setRadius}
+              minimumTrackTintColor={colors.accentPink}
+              maximumTrackTintColor={colors.lightMuted}
+              thumbTintColor={colors.accentPink}
+            />
+
+            <View style={styles.sliderLabels}>
+              <Text style={styles.sliderLabelText}>10m</Text>
+              <Text style={styles.sliderLabelText}>200m</Text>
+            </View>
+
+            <View style={styles.buttonRow}>
+              <TouchableOpacity style={styles.cancelButton} onPress={cancelDropAnchor}>
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.nextButton}
+                onPress={() => {
+                  setAnchorLocation(null);
+                  navigation.navigate('AnchorCreation', {
+                    latitude: anchorLocation[1],
+                    longitude: anchorLocation[0],
+                    radius
+                  });
+                }}
+              >
+                <Text style={styles.nextButtonText}>Next</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : selectedAnchor ? (
           <View style={styles.detailContainer}>
             <View style={styles.detailHeaderRow}>
               <TouchableOpacity style={styles.backButton} onPress={closeAnchorDetails}>
@@ -523,7 +593,7 @@ export default function DiscoveryScreen() {
                 {
                   key: "distance",
                   label: "Distance",
-                  value: formatDistance(selectedAnchor.distanceMeters),
+                  value: "- km",
                 },
                 { key: "status", label: "State", value: selectedAnchor.lockLabel },
                 {
@@ -565,12 +635,9 @@ export default function DiscoveryScreen() {
               ListHeaderComponent={
                 <View style={styles.detailTopSection}>
                   <View style={styles.detailStatusRow}>
-                    <Feather
-                      name={selectedAnchor.isUnlocked ? "unlock" : "lock"}
-                      size={16}
-                      color={
-                        selectedAnchor.isUnlocked ? colors.success : colors.accentPink
-                      }
+                    <Image
+                      source={selectedAnchor.isUnlocked ? require('../../assets/unlocked.png') : require('../../assets/locked_p2.png')}
+                      style={{ width: 16, height: 16 }}
                     />
                     <Text
                       style={[
@@ -605,7 +672,7 @@ export default function DiscoveryScreen() {
             <View style={styles.listHeader}>
               <Text style={styles.listTitle}>Nearby Anchors</Text>
               <View style={styles.listHeaderActions}>
-                <TouchableOpacity onPress={() => void loadNearby()}>
+                <TouchableOpacity onPress={() => void loadAnchors()}>
                   <Feather name="refresh-cw" size={16} color={colors.muted} />
                 </TouchableOpacity>
                 <TouchableOpacity onPress={collapseSheet}>
@@ -617,7 +684,7 @@ export default function DiscoveryScreen() {
             {isLoading ? (
               <View style={styles.centerState}>
                 <ActivityIndicator color={colors.accentPink} />
-                <Text style={styles.centerStateText}>Finding anchors near you...</Text>
+                <Text style={styles.centerStateText}>Loading anchors...</Text>
               </View>
             ) : errorMessage ? (
               <View style={styles.centerState}>
@@ -640,7 +707,7 @@ export default function DiscoveryScreen() {
                 }}
                 scrollEventThrottle={16}
                 ListEmptyComponent={
-                  <Text style={styles.emptyStateText}>No anchors found nearby.</Text>
+                  <Text style={styles.emptyStateText}>No anchors found.</Text>
                 }
               />
             )}
@@ -651,18 +718,17 @@ export default function DiscoveryScreen() {
             onPress={() => animateSheet(true)}
             activeOpacity={0.9}
           >
-            <Text style={styles.collapsedTitle}>Nearby Anchors</Text>
+            <Text style={styles.collapsedTitle}>Anchors</Text>
             <Text style={styles.collapsedSubtitle}>
               {isLoading
-                ? "Loading nearby anchors..."
-                : `${filteredAnchors.length} anchors in range`}
+                ? "Loading anchors..."
+                : `${filteredAnchors.length} anchors found`}
             </Text>
             <Feather name="chevrons-up" size={16} color={colors.muted} />
           </TouchableOpacity>
         )}
-        </Animated.View>
-      </View>
-    </TouchableWithoutFeedback>
+      </Animated.View>
+    </View >
   );
 }
 
@@ -731,14 +797,6 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 5,
   },
-  userDot: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: colors.blue,
-    borderWidth: 2,
-    borderColor: colors.white,
-  },
   mapMarker: {
     width: 30,
     height: 30,
@@ -747,12 +805,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 1,
     borderColor: colors.white,
-  },
-  mapMarkerUnlocked: {
-    backgroundColor: colors.success,
+    backgroundColor: colors.accentPink,
   },
   mapMarkerLocked: {
     backgroundColor: colors.accentPink,
+  },
+  mapMarkerDropped: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
   },
   bottomSheet: {
     position: "absolute",
@@ -819,7 +881,7 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
   anchorCard: {
-    backgroundColor: colors.white,
+    backgroundColor: colors.canvas,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 14,
@@ -907,6 +969,72 @@ const styles = StyleSheet.create({
   },
   detailContainer: {
     flex: 1,
+    paddingHorizontal: 24,
+    paddingTop: 24,
+  },
+  radiusHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  radiusTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  radiusValue: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  radiusFact: {
+    fontSize: 12,
+    color: colors.accentPink,
+    fontStyle: 'italic',
+    marginBottom: 8,
+  },
+  slider: {
+    width: '100%',
+    height: 40,
+  },
+  sliderLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 24,
+  },
+  sliderLabelText: {
+    color: colors.lightMuted,
+    fontSize: 12,
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  cancelButton: {
+    flex: 1,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  nextButton: {
+    flex: 1,
+    backgroundColor: colors.accentPink,
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  nextButtonText: {
+    color: colors.white,
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   detailHeaderRow: {
     flexDirection: "row",
@@ -992,5 +1120,21 @@ const styles = StyleSheet.create({
   detailValue: {
     color: colors.text,
     fontSize: 14,
+  },
+  markerWrapper: { width: 30, height: 30 },
+  ownerBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 13,
+    height: 13,
+    borderRadius: 7,
+    backgroundColor: colors.accentPink,
+    borderWidth: 1.5,
+    borderColor: colors.white,
+  },
+  markerImage: {
+    width: '100%',
+    height: '100%',
   },
 });
