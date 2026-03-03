@@ -24,6 +24,7 @@ type Props = NativeStackScreenProps<RootStackParamList, "AnchorCreation">;
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { apiRequest } from "../services/api";
 import { useAuth } from "../context/AuthContext";
+import { CreateAnchorBody } from "../services/anchorService";
 
 
 // Dummy circle. TODO: CHANGE THEM LATER TO GET FROM BACKEND!!!
@@ -199,23 +200,18 @@ export default function AnchorCreation({ navigation, route }: Props) {
 
     const visibilityMap = { Public: "PUBLIC", Circle: "CIRCLE_ONLY", Private: "PRIVATE" } as const;
 
-    const body: Record<string, unknown> = {
+    const body: CreateAnchorBody = {
       title: title.trim(),
       latitude,
       longitude,
       visibility: visibilityMap[visibility],
-      unlock_radius: radius,
+      unlock_radius: Math.round(radius),
       activation_time: creationManuallySet ? creationTime.toISOString() : null,
       expiration_time: expiryTime ? expiryTime.toISOString() : null,
+      description: content.trim() || null,
+      max_unlock: maxUnlock.trim() ? parseInt(maxUnlock, 10) : null,
+      tags: tags
     };
-
-    if (content.trim()) {
-      body.description = content.trim();
-    }
-    if (maxUnlock.trim()) {
-      body.max_unlock = parseInt(maxUnlock, 10);
-    }
-
     setIsSubmitting(true);
     try {
       await apiRequest("/anchors/", {
@@ -223,7 +219,7 @@ export default function AnchorCreation({ navigation, route }: Props) {
         body,
         token: session.access_token,
       });
-      navigation.navigate("Map");
+      navigation.navigate("Discovery");
     } catch (err: any) {
       Alert.alert("Error", err.message || "Failed to create anchor.");
     } finally {

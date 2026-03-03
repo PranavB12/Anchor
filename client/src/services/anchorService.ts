@@ -22,6 +22,20 @@ export type NearbyAnchor = {
   tags: string[] | null;
 };
 
+export type CreateAnchorBody = {
+  title: string;
+  description?: string | null;
+  latitude: number;
+  longitude: number;
+  altitude?: number | null;
+  visibility: "PUBLIC" | "PRIVATE" | "CIRCLE_ONLY";
+  unlock_radius: number;
+  max_unlock?: number | null;
+  activation_time?: string | null;
+  expiration_time?: string | null;
+  tags?: string[] | null;
+};
+
 type GetNearbyAnchorsParams = {
   lat: number;
   lon: number;
