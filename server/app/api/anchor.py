@@ -2,19 +2,22 @@
 US5 #1 — Anchor Creation API
 US9 #1 — Anchor Edit and Delete API
 US11 #3 — Prevent unlocking outside activation window
+US12 #3 — Sort by distance, filter locked/unlocked, public/private
 
 Endpoints:
-    POST   /anchors             — create a new Anchor tied to a location
-    PATCH  /anchors/{anchor_id} — update an existing Anchor (owner only)
-    DELETE /anchors/{anchor_id} — delete an Anchor (owner only)
+    POST   /anchors                    — create a new Anchor tied to a location
+    GET    /anchors/nearby             — list nearby anchors sorted by distance with filters
+    PATCH  /anchors/{anchor_id}        — update an existing Anchor (owner only)
+    DELETE /anchors/{anchor_id}        — delete an Anchor (owner only)
     POST   /anchors/{anchor_id}/unlock — unlock an Anchor (checks activation window)
 """
 
 import json
 import uuid
 from datetime import datetime
+from typing import Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -28,6 +31,11 @@ router = APIRouter(prefix="/anchors", tags=["Anchors"])
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _get_anchor_by_id(db: Session, anchor_id: str):
+    """
+    Fetch a single anchor row by its ID.
+    Uses ST_X/ST_Y to extract longitude/latitude from the MySQL POINT geometry column.
+    Returns None if no anchor is found.
+    """
     row = db.execute(
         text("""
             SELECT anchor_id, creator_id, title, description,
@@ -44,6 +52,10 @@ def _get_anchor_by_id(db: Session, anchor_id: str):
 
 
 def _row_to_response(row) -> AnchorResponse:
+    """
+    Convert a raw database row into an AnchorResponse schema object.
+    Tags are stored as a JSON string in the DB, so we parse them back into a list.
+    """
     tags = row.tags
     if isinstance(tags, str):
         tags = json.loads(tags)
@@ -77,6 +89,8 @@ def create_anchor(
     """
     Create a new Anchor at the given location.
     The caller's user_id is set as the creator.
+    Location is stored as a MySQL POINT geometry using ST_GeomFromText with SRID 4326 (WGS84).
+    Tags are serialized to JSON for storage.
     """
     if payload.visibility not in ("PUBLIC", "PRIVATE", "CIRCLE_ONLY"):
         raise HTTPException(
@@ -85,6 +99,7 @@ def create_anchor(
         )
 
     anchor_id = str(uuid.uuid4())
+    # Serialize tags list to JSON string for DB storage, or None if no tags provided
     tags_json = json.dumps(payload.tags) if payload.tags else None
 
     db.execute(
@@ -104,6 +119,7 @@ def create_anchor(
             "creator_id": user_id,
             "title": payload.title,
             "description": payload.description,
+            # MySQL POINT format is POINT(longitude latitude) — note lon comes first
             "point": f"POINT({payload.longitude} {payload.latitude})",
             "altitude": payload.altitude,
             "visibility": payload.visibility,
@@ -116,6 +132,7 @@ def create_anchor(
     )
     db.commit()
 
+    # Re-fetch the inserted row to return the full response with all fields
     row = _get_anchor_by_id(db, anchor_id)
     return _row_to_response(row)
 
@@ -131,7 +148,8 @@ def update_anchor(
 ):
     """
     Update an existing Anchor. Only the creator can edit.
-    Only provided (non-None) fields are updated.
+    Only provided (non-None) fields are updated — partial updates are supported.
+    Location is updated only if latitude or longitude is provided.
     """
     row = _get_anchor_by_id(db, anchor_id)
     if not row:
@@ -139,6 +157,7 @@ def update_anchor(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Anchor not found",
         )
+    # Ensure only the creator can modify this anchor
     if row.creator_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -153,6 +172,7 @@ def update_anchor(
             detail="visibility must be PUBLIC, PRIVATE, or CIRCLE_ONLY",
         )
 
+    # Build a dict of only the fields that were actually provided
     fields = {}
     if payload.title is not None:
         fields["title"] = payload.title
@@ -173,6 +193,8 @@ def update_anchor(
     if payload.tags is not None:
         fields["tags"] = json.dumps(payload.tags)
 
+    # Handle partial location update — if only lat or only lon is provided,
+    # fall back to the existing value for the other coordinate
     location_update = ""
     if payload.latitude is not None or payload.longitude is not None:
         new_lat = payload.latitude if payload.latitude is not None else row.latitude
@@ -207,6 +229,7 @@ def delete_anchor(
 ):
     """
     Delete an Anchor. Only the creator can delete.
+    Returns a success message on deletion.
     """
     row = _get_anchor_by_id(db, anchor_id)
     if not row:
@@ -214,6 +237,7 @@ def delete_anchor(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Anchor not found",
         )
+    # Ensure only the creator can delete this anchor
     if row.creator_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -238,11 +262,13 @@ def unlock_anchor(
 ):
     """
     US11 #3 — Attempt to unlock an Anchor.
-    Checks:
+    Checks (in order):
       1. Anchor exists
-      2. Anchor is ACTIVE
-      3. Current time is within activation_time and expiration_time window
-      4. Unlock count has not exceeded max_unlock
+      2. Anchor status is ACTIVE
+      3. Current time is after activation_time (if set)
+      4. Current time is before expiration_time (if set) — auto-expires if past
+      5. Unlock count has not exceeded max_unlock — auto-expires if reached
+    On success, increments current_unlock counter.
     """
     row = _get_anchor_by_id(db, anchor_id)
     if not row:
@@ -251,7 +277,7 @@ def unlock_anchor(
             detail="Anchor not found",
         )
 
-    # Check anchor is active
+    # Anchor must be in ACTIVE status to be unlocked
     if row.status != "ACTIVE":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -260,16 +286,15 @@ def unlock_anchor(
 
     now = datetime.utcnow()
 
-    # Check activation window — if activation_time is set, must be after it
+    # If activation_time is set, block unlocking before that time
     if row.activation_time and now < row.activation_time:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Anchor is not yet active. Opens at {row.activation_time} UTC",
         )
 
-    # Check expiration — if expiration_time is set, must be before it
+    # If expiration_time is set and we're past it, auto-mark as EXPIRED and block
     if row.expiration_time and now > row.expiration_time:
-        # Mark anchor as expired
         db.execute(
             text("UPDATE anchors SET status = 'EXPIRED' WHERE anchor_id = :anchor_id"),
             {"anchor_id": anchor_id},
@@ -280,7 +305,7 @@ def unlock_anchor(
             detail="Anchor has expired",
         )
 
-    # Check max unlock count (US8 #3)
+    # If max_unlock is set and already reached, auto-mark as EXPIRED and block
     if row.max_unlock is not None and row.current_unlock >= row.max_unlock:
         db.execute(
             text("UPDATE anchors SET status = 'EXPIRED' WHERE anchor_id = :anchor_id"),
@@ -292,7 +317,7 @@ def unlock_anchor(
             detail="Anchor has reached its maximum number of unlocks",
         )
 
-    # All checks passed — increment unlock count
+    # All checks passed — increment the unlock counter
     db.execute(
         text("""
             UPDATE anchors
@@ -305,7 +330,7 @@ def unlock_anchor(
 
     new_count = row.current_unlock + 1
 
-    # If this unlock was the last one, mark as expired (US8 #3)
+    # If this was the final allowed unlock, mark anchor as EXPIRED
     if row.max_unlock is not None and new_count >= row.max_unlock:
         db.execute(
             text("UPDATE anchors SET status = 'EXPIRED' WHERE anchor_id = :anchor_id"),
@@ -322,16 +347,13 @@ def unlock_anchor(
 
 # ── Nearby Anchors (US12 #3) ──────────────────────────────────────────────────
 
-from typing import Optional, List
-from fastapi import Query
-from app.schemas.anchor import AnchorResponse
-
 @router.get("/nearby", response_model=List[AnchorResponse])
 def get_nearby_anchors(
     lat: float = Query(..., description="User's current latitude"),
     lon: float = Query(..., description="User's current longitude"),
     radius_km: float = Query(5.0, description="Search radius in kilometers"),
     visibility: Optional[str] = Query(None, description="Filter by visibility: PUBLIC, PRIVATE, CIRCLE_ONLY"),
+    # Named anchor_status (not status) to avoid shadowing fastapi.status module
     anchor_status: Optional[str] = Query(None, alias="anchor_status", description="Filter by status: ACTIVE, EXPIRED, LOCKED, FLAGGED"),
     sort_by: str = Query("distance", description="Sort by: distance or created_at"),
     user_id: str = Depends(get_current_user_id),
@@ -339,17 +361,19 @@ def get_nearby_anchors(
 ):
     """
     US12 #3 — Get nearby anchors sorted by distance with optional filters.
-    Uses MySQL ST_Distance_Sphere for accurate distance calculation.
+    Uses MySQL ST_Distance_Sphere for accurate great-circle distance in meters.
+    Filters are appended dynamically to the WHERE clause only if provided.
     """
 
-    # Build optional filter clauses
+    # Start with base params; filters string is built up conditionally below
     filters = ""
     params = {
         "lat": lat,
         "lon": lon,
-        "radius_m": radius_km * 1000,
+        "radius_m": radius_km * 1000,  # Convert km to meters for ST_Distance_Sphere
     }
 
+    # Append visibility filter if provided
     if visibility:
         if visibility not in ("PUBLIC", "PRIVATE", "CIRCLE_ONLY"):
             raise HTTPException(
@@ -359,6 +383,7 @@ def get_nearby_anchors(
         filters += " AND a.visibility = :visibility"
         params["visibility"] = visibility
 
+    # Append status filter if provided
     if anchor_status:
         if anchor_status not in ("ACTIVE", "EXPIRED", "LOCKED", "FLAGGED"):
             raise HTTPException(
@@ -368,7 +393,7 @@ def get_nearby_anchors(
         filters += " AND a.status = :anchor_status"
         params["anchor_status"] = anchor_status
 
-    # Sort clause
+    # Default sort is by distance ascending; fallback sorts by anchor_id (insertion order)
     order_clause = "distance_m ASC" if sort_by == "distance" else "a.anchor_id DESC"
 
     rows = db.execute(
@@ -389,6 +414,7 @@ def get_nearby_anchors(
                 a.activation_time,
                 a.expiration_time,
                 a.tags,
+                -- Calculate distance in meters from user's position to each anchor
                 ST_Distance_Sphere(
                     a.location,
                     ST_GeomFromText(:user_point, 4326)
@@ -406,6 +432,7 @@ def get_nearby_anchors(
 
     results = []
     for row in rows:
+        # Tags are stored as JSON string in DB — parse back to list, default to empty list on error
         tags = row.tags
         if isinstance(tags, str):
             try:
