@@ -244,6 +244,13 @@ export default function LoginScreen({ navigation }: Props) {
             </Pressable>
           </View>
 
+              <Pressable
+                onPress={() => navigation.navigate("ForgotPassword")}
+                style={styles.forgotPasswordButton}
+              >
+                <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+              </Pressable>
+
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
               {successMessage ? (
                 <Text style={styles.successText}>{successMessage}</Text>
@@ -406,6 +413,15 @@ const styles = StyleSheet.create({
   showHideText: {
     color: colors.accentPink,
     fontWeight: "600",
+  },
+  forgotPasswordButton: {
+    marginTop: 8,
+    alignSelf: "flex-end",
+  },
+  forgotPasswordText: {
+    color: colors.accentPink,
+    fontWeight: "600",
+    fontSize: 13,
   },
   errorText: {
     marginTop: 10,
