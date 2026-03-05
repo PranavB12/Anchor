@@ -1,0 +1,28 @@
+appId: ${MAESTRO_APP_ID}
+---
+- launchApp
+- tapOn: "you@example.com"
+- inputText: ${TEST_USER_EMAIL}
+- tapOn: "Enter your password"
+- inputText: ${TEST_USER_PASSWORD}
+- hideKeyboard
+- tapOn: "Log In"
+
+# Authenticated app shell should be visible.
+- assertVisible:
+    id: "open-profile-button"
+
+# Open profile screen and trigger logout.
+- tapOn:
+    id: "open-profile-button"
+- assertVisible:
+    id: "logout-button"
+- tapOn:
+    id: "logout-button"
+- tapOn: "Log out"
+
+# User should be back on login, and remain logged out after relaunch.
+- assertVisible: "Log In"
+- stopApp
+- launchApp
+- assertVisible: "Log In"

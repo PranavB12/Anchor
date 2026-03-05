@@ -467,6 +467,7 @@ export default function DiscoveryScreen() {
                 />
               </View>
               <TouchableOpacity
+                testID="open-profile-button"
                 style={styles.profileButton}
                 onPress={() => navigation.navigate("EditProfile")}
               >

@@ -183,6 +183,7 @@ export default function EditProfileScreen({ navigation }: Props) {
               </Pressable>
 
               <Pressable
+                testID="logout-button"
                 disabled={isSubmitting || isLoggingOut}
                 onPress={handleLogout}
                 style={({ pressed }) => [
