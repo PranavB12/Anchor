@@ -23,7 +23,7 @@ import { getProfile, updateProfile } from "../services/authService";
 type Props = NativeStackScreenProps<RootStackParamList, "EditProfile">;
 
 export default function EditProfileScreen({ navigation }: Props) {
-  const { session } = useAuth();
+  const { session, signOut } = useAuth();
 
   const [username, setUsername] = useState("");
   const [bio, setBio] = useState("");
@@ -31,6 +31,7 @@ export default function EditProfileScreen({ navigation }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -78,6 +79,30 @@ export default function EditProfileScreen({ navigation }: Props) {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleLogout = () => {
+    Alert.alert("Log out", "Are you sure you want to log out?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Log out",
+        style: "destructive",
+        onPress: () => {
+          const run = async () => {
+            setIsLoggingOut(true);
+            try {
+              await signOut();
+            } catch (err) {
+              const message = err instanceof Error ? err.message : "Logout failed";
+              setError(message);
+            } finally {
+              setIsLoggingOut(false);
+            }
+          };
+          void run();
+        },
+      },
+    ]);
   };
 
   if (isLoading) {
@@ -143,17 +168,32 @@ export default function EditProfileScreen({ navigation }: Props) {
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
               <Pressable
-                disabled={isSubmitting}
+                disabled={isSubmitting || isLoggingOut}
                 onPress={handleSave}
                 style={({ pressed }) => [
                   styles.primaryButton,
-                  (pressed || isSubmitting) && styles.primaryButtonPressed,
+                  (pressed || isSubmitting || isLoggingOut) && styles.primaryButtonPressed,
                 ]}
               >
                 {isSubmitting ? (
                   <ActivityIndicator color="#ffffff" />
                 ) : (
                   <Text style={styles.primaryButtonText}>Save Changes</Text>
+                )}
+              </Pressable>
+
+              <Pressable
+                disabled={isSubmitting || isLoggingOut}
+                onPress={handleLogout}
+                style={({ pressed }) => [
+                  styles.logoutButton,
+                  (pressed || isSubmitting || isLoggingOut) && styles.primaryButtonPressed,
+                ]}
+              >
+                {isLoggingOut ? (
+                  <ActivityIndicator color={colors.accentPink} />
+                ) : (
+                  <Text style={styles.logoutButtonText}>Log Out</Text>
                 )}
               </Pressable>
             </View>
@@ -234,4 +274,19 @@ const styles = StyleSheet.create({
   },
   primaryButtonPressed: { opacity: 0.9 },
   primaryButtonText: { color: colors.white, fontSize: 16, fontWeight: "700" },
+  logoutButton: {
+    marginTop: 12,
+    minHeight: 48,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.accentPink,
+    backgroundColor: "#fff6f8",
+  },
+  logoutButtonText: {
+    color: colors.accentPink,
+    fontSize: 16,
+    fontWeight: "700",
+  },
 });
