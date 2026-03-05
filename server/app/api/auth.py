@@ -174,7 +174,7 @@ def _build_password_reset_link(reset_token: str) -> str:
     return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(query), parsed.fragment))
 
 
-def _send_password_reset_email(recipient_email: str, reset_link: str):
+def _send_password_reset_email(recipient_email: str, reset_link: str, reset_token: str):
     """
     Send the password reset email with both plain text and HTML versions.
     Returns True if sent successfully, False if the email service failed.
@@ -183,14 +183,21 @@ def _send_password_reset_email(recipient_email: str, reset_link: str):
     subject = "Reset your Anchor password"
     text_body = (
         "We received a request to reset your Anchor password.\n\n"
-        f"Open this link to continue:\n{reset_link}\n\n"
-        f"This link expires in {settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES} minutes.\n"
+        "Try opening this link in your device:\n"
+        f"{reset_link}\n\n"
+        "If the link does not open the app from your email client, copy this token and paste it in the app's Reset Password screen:\n"
+        f"{reset_token}\n\n"
+        f"This link/token expires in {settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES} minutes.\n"
         "If you did not request a password reset, you can ignore this email."
     )
     html_body = (
         "<p>We received a request to reset your Anchor password.</p>"
         f"<p><a href=\"{reset_link}\">Open Reset Link</a></p>"
-        f"<p>This link expires in {settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES} minutes.</p>"
+        "<p>If your email app does not open the deep link, copy this URL into your browser/app:</p>"
+        f"<p><code>{reset_link}</code></p>"
+        "<p>Or paste this token directly in the app's Reset Password screen:</p>"
+        f"<p><code>{reset_token}</code></p>"
+        f"<p>This link/token expires in {settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES} minutes.</p>"
         "<p>If you did not request a password reset, you can ignore this email.</p>"
     )
     return send_email(
@@ -522,7 +529,7 @@ def request_password_reset(payload: PasswordResetRequest, db: Session = Depends(
 
         # Build the deep link and send the reset email
         reset_link = _build_password_reset_link(reset_token)
-        sent = _send_password_reset_email(payload.email, reset_link)
+        sent = _send_password_reset_email(payload.email, reset_link, reset_token)
         if not sent:
             # Log warning but don't expose email failure to the client
             logger.warning("Password reset email was not sent for %s", payload.email)
