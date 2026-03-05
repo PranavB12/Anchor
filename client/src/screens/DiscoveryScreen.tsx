@@ -13,6 +13,7 @@ import {
   Keyboard,
   PanResponder,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -182,6 +183,9 @@ export default function DiscoveryScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [userCoordinate, setUserCoordinate] = useState<Coordinate | null>(null);
   const [anchors, setAnchors] = useState<AnchorWithDerivedFields[]>([]);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [draftSelectedTags, setDraftSelectedTags] = useState<string[]>([]);
+  const [isTagFilterOpen, setIsTagFilterOpen] = useState(false);
   const [selectedAnchorId, setSelectedAnchorId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -319,19 +323,75 @@ export default function DiscoveryScreen() {
     void loadAnchors();
   }, [loadAnchors]);
 
+  const topNearbyTags = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const anchor of anchors) {
+      for (const rawTag of anchor.tags ?? []) {
+        const normalized = rawTag.trim().toLowerCase();
+        if (!normalized) continue;
+        counts.set(normalized, (counts.get(normalized) ?? 0) + 1);
+      }
+    }
+
+    return Array.from(counts.entries())
+      .sort((a, b) => {
+        if (b[1] !== a[1]) return b[1] - a[1];
+        return a[0].localeCompare(b[0]);
+      })
+      .slice(0, 10)
+      .map(([tag, count]) => ({ tag, count }));
+  }, [anchors]);
+
+  const hasActiveTagFilter = selectedTags.length > 0;
+
+  const openTagFilter = useCallback(() => {
+    setDraftSelectedTags(selectedTags);
+    setIsTagFilterOpen(true);
+  }, [selectedTags]);
+
+  const closeTagFilter = useCallback(() => {
+    setDraftSelectedTags(selectedTags);
+    setIsTagFilterOpen(false);
+  }, [selectedTags]);
+
+  const toggleDraftTag = useCallback((tag: string) => {
+    setDraftSelectedTags((previous) =>
+      previous.includes(tag)
+        ? previous.filter((item) => item !== tag)
+        : [...previous, tag],
+    );
+  }, []);
+
+  const applyTagFilter = useCallback(() => {
+    setSelectedTags(draftSelectedTags);
+    setIsTagFilterOpen(false);
+  }, [draftSelectedTags]);
+
+  const clearTagFilter = useCallback(() => {
+    setSelectedTags([]);
+    setDraftSelectedTags([]);
+    setIsTagFilterOpen(false);
+  }, []);
+
   const filteredAnchors = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
-    if (!normalizedQuery) return anchors;
-
     return anchors.filter((anchor) => {
-      const tags = (anchor.tags ?? []).join(" ").toLowerCase();
-      return (
+      const anchorTags = (anchor.tags ?? []).map((tag) => tag.toLowerCase());
+      const joinedTags = anchorTags.join(" ");
+
+      const matchesSearch =
+        !normalizedQuery ||
         anchor.title.toLowerCase().includes(normalizedQuery) ||
         anchor.visibilityLabel.toLowerCase().includes(normalizedQuery) ||
-        tags.includes(normalizedQuery)
-      );
+        joinedTags.includes(normalizedQuery);
+
+      const matchesTags =
+        selectedTags.length === 0 ||
+        selectedTags.some((selectedTag) => anchorTags.includes(selectedTag));
+
+      return matchesSearch && matchesTags;
     });
-  }, [anchors, searchQuery]);
+  }, [anchors, searchQuery, selectedTags]);
 
   const selectedAnchor = useMemo(
     () => anchors.find((anchor) => anchor.anchor_id === selectedAnchorId) ?? null,
@@ -682,6 +742,128 @@ export default function DiscoveryScreen() {
               </View>
             </View>
 
+            <View style={styles.listFilterRow}>
+              <View
+                style={[
+                  styles.filterPillWrap,
+                  hasActiveTagFilter && styles.filterPillWrapActive,
+                ]}
+              >
+                <TouchableOpacity
+                  style={styles.filterPillMain}
+                  onPress={() => {
+                    if (isTagFilterOpen) {
+                      closeTagFilter();
+                      return;
+                    }
+                    openTagFilter();
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Feather
+                    name="tag"
+                    size={13}
+                    color={hasActiveTagFilter ? colors.accentPink : colors.muted}
+                  />
+                  <Text
+                    style={[
+                      styles.filterPillText,
+                      hasActiveTagFilter && styles.filterPillTextActive,
+                    ]}
+                  >
+                    Tags{hasActiveTagFilter ? ` (${selectedTags.length})` : ""}
+                  </Text>
+                  <Feather
+                    name={isTagFilterOpen ? "chevron-up" : "chevron-down"}
+                    size={14}
+                    color={hasActiveTagFilter ? colors.accentPink : colors.muted}
+                  />
+                </TouchableOpacity>
+
+                {hasActiveTagFilter ? (
+                  <TouchableOpacity
+                    style={styles.filterPillClear}
+                    onPress={clearTagFilter}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Feather name="x" size={13} color={colors.accentPink} />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            </View>
+
+            {isTagFilterOpen ? (
+              <View style={styles.tagDropdown}>
+                <View style={styles.tagDropdownHeader}>
+                  <Text style={styles.tagDropdownTitle}>Filter by tags</Text>
+                  <Text style={styles.tagDropdownMeta}>
+                    {draftSelectedTags.length} selected
+                  </Text>
+                </View>
+
+                {topNearbyTags.length === 0 ? (
+                  <Text style={styles.tagDropdownEmpty}>
+                    No nearby tags to filter yet.
+                  </Text>
+                ) : (
+                  <ScrollView
+                    style={styles.tagDropdownList}
+                    contentContainerStyle={styles.tagDropdownListContent}
+                    nestedScrollEnabled
+                    showsVerticalScrollIndicator={false}
+                  >
+                    {topNearbyTags.map(({ tag, count }) => {
+                      const isChecked = draftSelectedTags.includes(tag);
+                      return (
+                        <Pressable
+                          key={tag}
+                          style={[
+                            styles.tagOptionRow,
+                            isChecked && styles.tagOptionRowChecked,
+                          ]}
+                          onPress={() => toggleDraftTag(tag)}
+                        >
+                          <Feather
+                            name={isChecked ? "check-square" : "square"}
+                            size={16}
+                            color={isChecked ? colors.accentPink : colors.muted}
+                          />
+                          <Text
+                            style={[
+                              styles.tagOptionText,
+                              isChecked && styles.tagOptionTextChecked,
+                            ]}
+                          >
+                            #{tag}
+                          </Text>
+                          <Text style={styles.tagOptionCount}>{count}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+                )}
+
+                <View style={styles.tagDropdownActions}>
+                  <TouchableOpacity
+                    style={styles.tagDropdownSecondaryButton}
+                    onPress={closeTagFilter}
+                  >
+                    <Text style={styles.tagDropdownSecondaryButtonText}>
+                      Cancel
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.tagDropdownPrimaryButton}
+                    onPress={applyTagFilter}
+                  >
+                    <Text style={styles.tagDropdownPrimaryButtonText}>
+                      Confirm
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : null}
+
             {isLoading ? (
               <View style={styles.centerState}>
                 <ActivityIndicator color={colors.accentPink} />
@@ -708,7 +890,11 @@ export default function DiscoveryScreen() {
                 }}
                 scrollEventThrottle={16}
                 ListEmptyComponent={
-                  <Text style={styles.emptyStateText}>No anchors found.</Text>
+                  <Text style={styles.emptyStateText}>
+                    {hasActiveTagFilter
+                      ? "No anchors match your selected tags."
+                      : "No anchors found."}
+                  </Text>
                 }
               />
             )}
@@ -871,6 +1057,144 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 14,
+  },
+  listFilterRow: {
+    paddingHorizontal: 18,
+    paddingBottom: 10,
+  },
+  filterPillWrap: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.white,
+    overflow: "hidden",
+  },
+  filterPillWrapActive: {
+    borderColor: "#f7a2b4",
+    backgroundColor: "#FEE8ED",
+  },
+  filterPillMain: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  filterPillText: {
+    color: colors.muted,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  filterPillTextActive: {
+    color: colors.accentPink,
+  },
+  filterPillClear: {
+    borderLeftWidth: 1,
+    borderLeftColor: "#f7a2b4",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FDE3EA",
+  },
+  tagDropdown: {
+    marginHorizontal: 18,
+    marginBottom: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.white,
+    padding: 12,
+    gap: 10,
+  },
+  tagDropdownHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  tagDropdownTitle: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  tagDropdownMeta: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  tagDropdownEmpty: {
+    color: colors.muted,
+    fontSize: 13,
+  },
+  tagDropdownList: {
+    maxHeight: 220,
+  },
+  tagDropdownListContent: {
+    gap: 8,
+  },
+  tagOptionRow: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#fffdfa",
+  },
+  tagOptionRowChecked: {
+    borderColor: "#f7a2b4",
+    backgroundColor: "#fff1f4",
+  },
+  tagOptionText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: "600",
+    flex: 1,
+  },
+  tagOptionTextChecked: {
+    color: colors.accentPink,
+  },
+  tagOptionCount: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  tagDropdownActions: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  tagDropdownSecondaryButton: {
+    flex: 1,
+    minHeight: 40,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fffdfa",
+  },
+  tagDropdownSecondaryButtonText: {
+    color: colors.text,
+    fontWeight: "700",
+    fontSize: 13,
+  },
+  tagDropdownPrimaryButton: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.accentPink,
+  },
+  tagDropdownPrimaryButtonText: {
+    color: colors.white,
+    fontWeight: "700",
+    fontSize: 13,
   },
   listTitle: {
     fontSize: 18,
