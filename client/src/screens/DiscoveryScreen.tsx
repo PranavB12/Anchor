@@ -709,12 +709,9 @@ export default function DiscoveryScreen() {
               <TouchableOpacity
                 style={styles.nextButton}
                 onPress={() => {
-                  const id = editingAnchor.anchor_id;
+                  const anchor = editingAnchor;
                   setEditingAnchor(null);
-                  navigation.navigate('EditAnchor', {
-                    anchorId: id,
-                    radius
-                  });
+                  navigation.navigate('EditAnchor', { anchor, radius });
                 }}
               >
                 <Text style={styles.nextButtonText}>Next</Text>

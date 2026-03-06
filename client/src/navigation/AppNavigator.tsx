@@ -3,6 +3,7 @@ import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 
 import { useAuth } from "../context/AuthContext";
+import { NearbyAnchor } from "../services/anchorService";
 import LoginScreen from "../screens/LoginScreen";
 import RegisterScreen from "../screens/RegisterScreen";
 import DiscoveryScreen from "../screens/DiscoveryScreen";
@@ -21,7 +22,7 @@ export type RootStackParamList = {
   Discovery: undefined;
   Map: undefined;
   AnchorCreation: { latitude: number; longitude: number; radius: number };
-  EditAnchor: { anchorId: string; radius: number };
+  EditAnchor: { anchor: NearbyAnchor; radius: number };
   EditProfile: undefined;
 };
 

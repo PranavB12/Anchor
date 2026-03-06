@@ -20,6 +20,8 @@ import DateTimePicker, {
     DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useAuth } from "../context/AuthContext";
+import { updateAnchor } from "../services/anchorService";
 
 type Props = NativeStackScreenProps<RootStackParamList, "EditAnchor">;
 
@@ -35,49 +37,53 @@ const SUGGESTED_TAGS = ["nature", "chill", "secret", "food", "art", "music", "st
 
 type ContentType = "text" | "file" | "link";
 
-// ─── Dummy data for the anchor being edited ────────────────────────────────
-const DUMMY_ANCHOR_DATA = {
-    id: "anchor_001",
-    title: "Secret Garden Spot 🌿",
-    description: "A quiet place I found behind the engineering building.",
-    visibility: "Circle" as "Public" | "Circle" | "Private",
-    selectedCircles: ["1"],
-    contentType: "text" as ContentType,
-    tags: ["chill", "nature", "secret"],
-    maxUnlock: "20",
-    creationTime: new Date(Date.now() - 1000 * 60 * 60 * 3),
-    expiryTime: new Date(Date.now() + 1000 * 60 * 60 * 48),
-};
+function backendToFrontendVisibility(v: string): "Public" | "Circle" | "Private" {
+    if (v === "PUBLIC") return "Public";
+    if (v === "CIRCLE_ONLY") return "Circle";
+    return "Private";
+}
+
+function frontendToBackendVisibility(v: "Public" | "Circle" | "Private") {
+    if (v === "Public") return "PUBLIC";
+    if (v === "Circle") return "CIRCLE_ONLY";
+    return "PRIVATE";
+}
 
 export default function EditAnchor({ navigation, route }: Props) {
-    const { anchorId, radius } = route.params;
+    const { anchor, radius } = route.params;
+    const { session } = useAuth();
     const insets = useSafeAreaInsets();
 
-    // Pre-fill all fields from dummy data
-    const [title, setTitle] = useState(DUMMY_ANCHOR_DATA.title);
-    const [content, setContent] = useState(DUMMY_ANCHOR_DATA.description);
-    const [visibility, setVisibility] = useState<"Public" | "Circle" | "Private">(DUMMY_ANCHOR_DATA.visibility);
-    const [maxUnlock, setMaxUnlock] = useState(DUMMY_ANCHOR_DATA.maxUnlock);
+    const [title, setTitle] = useState(anchor.title);
+    const [content, setContent] = useState(anchor.description ?? "");
+    const [visibility, setVisibility] = useState<"Public" | "Circle" | "Private">(
+        backendToFrontendVisibility(anchor.visibility)
+    );
+    const [maxUnlock, setMaxUnlock] = useState(anchor.max_unlock != null ? String(anchor.max_unlock) : "");
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Dates
-    const [creationManuallySet, setCreationManuallySet] = useState(true);
-    const [creationTime, setCreationTime] = useState<Date>(DUMMY_ANCHOR_DATA.creationTime);
-    const [expiryTime, setExpiryTime] = useState<Date | null>(DUMMY_ANCHOR_DATA.expiryTime);
+    const [creationManuallySet, setCreationManuallySet] = useState(anchor.activation_time != null);
+    const [creationTime, setCreationTime] = useState<Date>(
+        anchor.activation_time ? new Date(anchor.activation_time) : new Date()
+    );
+    const [expiryTime, setExpiryTime] = useState<Date | null>(
+        anchor.expiration_time ? new Date(anchor.expiration_time) : null
+    );
     const [dateError, setDateError] = useState<string | null>(null);
     const [showCreationPicker, setShowCreationPicker] = useState(false);
     const [showExpiryPicker, setShowExpiryPicker] = useState(false);
 
     // Circles
     const [showCircleModal, setShowCircleModal] = useState(false);
-    const [selectedCircles, setSelectedCircles] = useState<string[]>(DUMMY_ANCHOR_DATA.selectedCircles);
+    const [selectedCircles, setSelectedCircles] = useState<string[]>([]);
 
     // Content type
     const [showContentTypeModal, setShowContentTypeModal] = useState(false);
-    const [contentType, setContentType] = useState<ContentType>(DUMMY_ANCHOR_DATA.contentType);
+    const [contentType, setContentType] = useState<ContentType>("text");
 
     // Tags
-    const [tags, setTags] = useState<string[]>(DUMMY_ANCHOR_DATA.tags);
+    const [tags, setTags] = useState<string[]>(anchor.tags ?? []);
     const [tagInput, setTagInput] = useState("");
     const [tagInputFocused, setTagInputFocused] = useState(false);
 
@@ -183,12 +189,25 @@ export default function EditAnchor({ navigation, route }: Props) {
             Alert.alert("Missing Title", "Please give your anchor a name.");
             return;
         }
+        if (!session?.access_token) return;
         setIsSubmitting(true);
-        // TODO: API call to update anchor
-        setTimeout(() => {
-            setIsSubmitting(false);
+        try {
+            await updateAnchor(anchor.anchor_id, {
+                title: title.trim(),
+                description: content.trim() || null,
+                visibility: frontendToBackendVisibility(visibility),
+                unlock_radius: radius,
+                max_unlock: maxUnlock.trim() ? parseInt(maxUnlock, 10) : null,
+                activation_time: creationManuallySet ? creationTime.toISOString() : null,
+                expiration_time: expiryTime ? expiryTime.toISOString() : null,
+                tags,
+            }, session.access_token);
             navigation.goBack();
-        }, 800);
+        } catch (err) {
+            Alert.alert("Error", err instanceof Error ? err.message : "Failed to save anchor.");
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     // ─── Content type config ──────────────────────────────────────────────────
@@ -256,7 +275,7 @@ export default function EditAnchor({ navigation, route }: Props) {
                     {/* ── Anchor ID badge ── */}
                     <View style={styles.anchorIdRow}>
                         <Feather name="anchor" size={13} color={colors.muted} />
-                        <Text style={styles.anchorIdText}>Editing anchor · {anchorId}</Text>
+                        <Text style={styles.anchorIdText}>Editing anchor · {anchor.anchor_id}</Text>
                     </View>
 
                     {/* TITLE */}
