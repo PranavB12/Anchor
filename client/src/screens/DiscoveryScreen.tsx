@@ -475,7 +475,7 @@ export default function DiscoveryScreen() {
   }, [anchorLocation, editingAnchor, radius]);
 
   const handleAnchorPress = (anchor: typeof anchors[0]) => {
-    // TODO: CHECK IF THIS IS YOUR ANCHOR OR NOT.
+    if (anchor.creator_id !== session?.user_id) return;
     Alert.alert("Your Anchor", undefined, [
       {
         text: "Edit Anchor",
