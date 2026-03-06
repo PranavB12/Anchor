@@ -17,6 +17,7 @@ Tests:
 """
 
 import pytest
+from datetime import datetime, timedelta, timezone
 from fastapi.testclient import TestClient
 from app.main import app
 
@@ -143,6 +144,107 @@ class TestCreateAnchor:
             headers=auth_headers(token),
         )
         assert resp.status_code == 400
+
+
+# ── Creation Time Boundary Tests ─────────────────────────────────────────────
+
+class TestCreateAnchorTimeBoundaries:
+
+    def test_create_rejects_activation_time_in_past(self):
+        """Creation fails when activation_time is in the past."""
+        token = get_user1_token()
+        past = (datetime.now(timezone.utc) - timedelta(minutes=2)).isoformat()
+        resp = client.post(
+            "/anchors/",
+            json=make_anchor_payload(
+                title="Past Activation",
+                activation_time=past,
+            ),
+            headers=auth_headers(token),
+        )
+        assert resp.status_code == 400
+        assert "activation_time cannot be in the past" in resp.json()["detail"]
+
+    def test_create_rejects_expiration_time_in_past_when_not_always_active(self):
+        """Creation fails when expiration_time is in the past and always_active is false."""
+        token = get_user1_token()
+        start = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+        past_end = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
+        resp = client.post(
+            "/anchors/",
+            json=make_anchor_payload(
+                title="Past Expiration",
+                activation_time=start,
+                expiration_time=past_end,
+                always_active=False,
+            ),
+            headers=auth_headers(token),
+        )
+        assert resp.status_code == 400
+        assert "expiration_time cannot be in the past" in resp.json()["detail"]
+
+    def test_create_rejects_expiration_equal_to_activation(self):
+        """Creation fails when expiration_time equals activation_time."""
+        token = get_user1_token()
+        same_time = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+        resp = client.post(
+            "/anchors/",
+            json=make_anchor_payload(
+                title="Equal Start End",
+                activation_time=same_time,
+                expiration_time=same_time,
+                always_active=False,
+            ),
+            headers=auth_headers(token),
+        )
+        assert resp.status_code == 400
+        assert "expiration_time must be after activation_time" in resp.json()["detail"]
+
+    def test_create_accepts_aware_times_when_window_is_valid(self):
+        """
+        Creation accepts timezone-aware timestamps and keeps always_active false
+        when a valid start/end window is provided.
+        """
+        token = get_user1_token()
+        start = (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()
+        end = (datetime.now(timezone.utc) + timedelta(minutes=25)).isoformat()
+        resp = client.post(
+            "/anchors/",
+            json=make_anchor_payload(
+                title="Aware Valid Window",
+                activation_time=start,
+                expiration_time=end,
+                always_active=False,
+            ),
+            headers=auth_headers(token),
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["always_active"] is False
+        assert data["expiration_time"] is not None
+
+    def test_create_always_active_ignores_expiration_time(self):
+        """
+        Creation treats anchor as always active and clears expiration_time
+        even if expiration_time is sent by the client.
+        """
+        token = get_user1_token()
+        start = (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()
+        past_end = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+        resp = client.post(
+            "/anchors/",
+            json=make_anchor_payload(
+                title="Always Active Ignores End",
+                activation_time=start,
+                expiration_time=past_end,
+                always_active=True,
+            ),
+            headers=auth_headers(token),
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["always_active"] is True
+        assert data["expiration_time"] is None
 
 
 # ── Edit Tests ───────────────────────────────────────────────────────────────

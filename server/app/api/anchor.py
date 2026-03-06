@@ -14,7 +14,7 @@ Endpoints:
 
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -74,8 +74,22 @@ def _row_to_response(row) -> AnchorResponse:
         current_unlock=row.current_unlock,
         activation_time=row.activation_time,
         expiration_time=row.expiration_time,
+        always_active=row.expiration_time is None,
         tags=tags,
     )
+
+
+def _to_utc_naive(dt: Optional[datetime]) -> Optional[datetime]:
+    """
+    Normalize incoming datetimes so anchor creation can keep using naive UTC comparisons.
+    - Aware datetime: convert to UTC, then strip tzinfo.
+    - Naive datetime: keep as-is.
+    """
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt
+    return dt.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 # ── Create Anchor ─────────────────────────────────────────────────────────────
@@ -96,6 +110,26 @@ def create_anchor(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="visibility must be PUBLIC, PRIVATE, or CIRCLE_ONLY",
+        )
+
+    now = datetime.utcnow()
+    activation_time = _to_utc_naive(payload.activation_time)
+    expiration_time = None if payload.always_active else _to_utc_naive(payload.expiration_time)
+
+    if activation_time and activation_time < now:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="activation_time cannot be in the past",
+        )
+    if expiration_time and expiration_time < now:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="expiration_time cannot be in the past",
+        )
+    if activation_time and expiration_time and expiration_time <= activation_time:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="expiration_time must be after activation_time",
         )
 
     anchor_id = str(uuid.uuid4())
@@ -128,6 +162,7 @@ def create_anchor(
             "unlock_radius": payload.unlock_radius,
             "max_unlock": payload.max_unlock,
             "activation_time": activation_time,
+            "expiration_time": expiration_time,
             "expiration_time": payload.expiration_time,
             "tags": tags_json,
         },
@@ -174,6 +209,34 @@ def update_anchor(
             detail="visibility must be PUBLIC, PRIVATE, or CIRCLE_ONLY",
         )
 
+    now = datetime.utcnow()
+    if payload.activation_time is not None and payload.activation_time < now:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="activation_time cannot be in the past",
+        )
+    if payload.expiration_time is not None and payload.expiration_time < now:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="expiration_time cannot be in the past",
+        )
+
+    effective_activation = (
+        payload.activation_time if payload.activation_time is not None else row.activation_time
+    )
+    if payload.always_active is True:
+        effective_expiration = None
+    elif payload.expiration_time is not None:
+        effective_expiration = payload.expiration_time
+    else:
+        effective_expiration = row.expiration_time
+
+    if effective_activation and effective_expiration and effective_expiration <= effective_activation:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="expiration_time must be after activation_time",
+        )
+
     # Build a dict of only the fields that were actually provided
     fields = {}
     if payload.title is not None:
@@ -190,7 +253,9 @@ def update_anchor(
         fields["altitude"] = payload.altitude
     if payload.activation_time is not None:
         fields["activation_time"] = payload.activation_time
-    if payload.expiration_time is not None:
+    if payload.always_active is True:
+        fields["expiration_time"] = None
+    elif payload.expiration_time is not None:
         fields["expiration_time"] = payload.expiration_time
     if payload.tags is not None:
         fields["tags"] = json.dumps(payload.tags)
@@ -382,6 +447,14 @@ def get_nearby_anchors(
         "radius_m": radius_km * 1000,  # Convert km to meters for ST_Distance_Sphere
     }
 
+    # Always return only anchors active for the current time window.
+    # Null activation_time means "active immediately";
+    # null expiration_time means "no end time" (always active).
+    filters += """
+        AND (a.activation_time IS NULL OR a.activation_time <= UTC_TIMESTAMP())
+        AND (a.expiration_time IS NULL OR a.expiration_time >= UTC_TIMESTAMP())
+    """
+
     # Append visibility filter if provided
     if visibility:
         if visibility not in ("PUBLIC", "PRIVATE", "CIRCLE_ONLY"):
@@ -463,6 +536,7 @@ def get_nearby_anchors(
             current_unlock=row.current_unlock,
             activation_time=row.activation_time,
             expiration_time=row.expiration_time,
+            always_active=row.expiration_time is None,
             tags=tags,
         ))
 
