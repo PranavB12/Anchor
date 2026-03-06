@@ -26,6 +26,7 @@ export default function EditProfileScreen({ navigation }: Props) {
   const { session, signOut } = useAuth();
 
   const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [bio, setBio] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -33,12 +34,14 @@ export default function EditProfileScreen({ navigation }: Props) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
+  // Load current profile on mount and pre-fill all fields
   useEffect(() => {
     const load = async () => {
       if (!session?.access_token) return;
       try {
         const profile = await getProfile(session.access_token);
         setUsername(profile.username ?? "");
+        setEmail(profile.email ?? "");
         setBio(profile.bio ?? "");
         setAvatarUrl(profile.avatar_url ?? "");
       } catch {
@@ -58,6 +61,12 @@ export default function EditProfileScreen({ navigation }: Props) {
       return;
     }
 
+    // Basic email format check before hitting the backend
+    if (!email.trim() || !email.includes("@")) {
+      setError("Please enter a valid email address.");
+      return;
+    }
+
     setError(null);
     setIsSubmitting(true);
 
@@ -65,6 +74,7 @@ export default function EditProfileScreen({ navigation }: Props) {
       await updateProfile(
         {
           username: username.trim(),
+          email: email.trim(),
           bio: bio.trim() || undefined,
           avatar_url: avatarUrl.trim() || undefined,
         },
@@ -74,6 +84,7 @@ export default function EditProfileScreen({ navigation }: Props) {
         { text: "OK", onPress: () => navigation.goBack() },
       ]);
     } catch (err) {
+      // Backend returns 409 if email is already taken by another account
       const message = err instanceof Error ? err.message : "Update failed";
       setError(message);
     } finally {
@@ -142,6 +153,18 @@ export default function EditProfileScreen({ navigation }: Props) {
                 placeholderTextColor="#9ca3af"
                 style={styles.input}
                 value={username}
+              />
+
+              <Text style={styles.label}>Email</Text>
+              <TextInput
+                autoCapitalize="none"
+                autoComplete="email"
+                keyboardType="email-address"
+                onChangeText={setEmail}
+                placeholder="you@example.com"
+                placeholderTextColor="#9ca3af"
+                style={styles.input}
+                value={email}
               />
 
               <Text style={styles.label}>Bio</Text>
