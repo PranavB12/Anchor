@@ -437,6 +437,14 @@ def get_nearby_anchors(
         "radius_m": radius_km * 1000,  # Convert km to meters for ST_Distance_Sphere
     }
 
+    # Always return only anchors active for the current time window.
+    # Null activation_time means "active immediately";
+    # null expiration_time means "no end time" (always active).
+    filters += """
+        AND (a.activation_time IS NULL OR a.activation_time <= UTC_TIMESTAMP())
+        AND (a.expiration_time IS NULL OR a.expiration_time >= UTC_TIMESTAMP())
+    """
+
     # Append visibility filter if provided
     if visibility:
         if visibility not in ("PUBLIC", "PRIVATE", "CIRCLE_ONLY"):
