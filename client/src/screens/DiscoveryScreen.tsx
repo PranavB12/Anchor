@@ -114,15 +114,21 @@ function getLockMeta(anchor: NearbyAnchor) {
     label: "Unlocked",
   };
 }
+
 function AnchorRowCard({
   anchor,
+  isSelected,
   onPress,
 }: {
   anchor: AnchorWithDerivedFields;
+  isSelected: boolean;
   onPress: () => void;
 }) {
   return (
-    <Pressable style={styles.anchorCard} onPress={onPress}>
+    <Pressable
+      style={[styles.anchorCard, isSelected && styles.anchorCardSelected]}
+      onPress={onPress}
+    >
       <View style={styles.anchorRowTop}>
         <Text style={styles.anchorTitle} numberOfLines={1}>
           {anchor.title}
@@ -203,6 +209,8 @@ export default function DiscoveryScreen() {
   const currentTranslateY = useRef(collapseOffset);
   const panStartOffset = useRef(collapseOffset);
   const listScrollOffset = useRef(0);
+  // NEW: ref to programmatically control the map camera
+  const cameraRef = useRef<Mapbox.Camera>(null);
 
   useEffect(() => {
     const listenerId = sheetTranslateY.addListener(({ value }) => {
@@ -398,13 +406,23 @@ export default function DiscoveryScreen() {
     [anchors, selectedAnchorId],
   );
 
+  // NEW: pan map to anchor and highlight it when a row is tapped
   const openAnchorDetails = useCallback(
     (anchorId: string) => {
       listScrollOffset.current = 0;
       setSelectedAnchorId(anchorId);
       animateSheet(true);
+
+      const anchor = anchors.find((a) => a.anchor_id === anchorId);
+      if (anchor && cameraRef.current) {
+        cameraRef.current.setCamera({
+          centerCoordinate: [anchor.longitude, anchor.latitude],
+          zoomLevel: 16,
+          animationDuration: 500,
+        });
+      }
     },
-    [animateSheet],
+    [animateSheet, anchors],
   );
 
   const closeAnchorDetails = useCallback(() => {
@@ -463,33 +481,47 @@ export default function DiscoveryScreen() {
   return (
     <View style={styles.screen}>
       <Mapbox.MapView style={styles.map} styleURL={Mapbox.StyleURL.Light}>
+        {/* NEW: ref added to allow programmatic camera control */}
         <Mapbox.Camera
+          ref={cameraRef}
           zoomLevel={14}
           centerCoordinate={userCoordinate ?? FALLBACK_CENTER}
           animationDuration={1000}
         />
 
-        {!anchorLocation && filteredAnchors.map((anchor) => (
-          <Mapbox.MarkerView
-            key={anchor.anchor_id}
-            id={`marker-${anchor.anchor_id}`}
-            coordinate={[anchor.longitude, anchor.latitude]}
-          >
-            <TouchableOpacity
-              onPress={() => handleAnchorPress(anchor)}
-              style={styles.mapMarker}
+        {!anchorLocation && filteredAnchors.map((anchor) => {
+          // NEW: check if this marker is the selected one
+          const isSelected = selectedAnchorId === anchor.anchor_id;
+          return (
+            <Mapbox.MarkerView
+              key={anchor.anchor_id}
+              id={`marker-${anchor.anchor_id}`}
+              coordinate={[anchor.longitude, anchor.latitude]}
             >
-              <View style={styles.markerWrapper}>
-                <Image
-                  source={anchor.isUnlocked ? require('../../assets/unlocked.png') : require('../../assets/locked_p2.png')}
-                  style={styles.markerImage}
-                />
-                {/* TODO: ONCE LOGIC FOR OWN ANCHOR IS DONE, UNCOMMENT BOTTOM THING */}
-                {/*{anchor.isOwn && <View style={styles.ownerBadge} />}*/}
-              </View>
-            </TouchableOpacity>
-          </Mapbox.MarkerView>
-        ))}
+              <TouchableOpacity
+                onPress={() => handleAnchorPress(anchor)}
+                style={[
+                  styles.mapMarker,
+                  // NEW: apply highlight style when selected
+                  isSelected && styles.mapMarkerSelected,
+                ]}
+              >
+                <View style={[
+                  styles.markerWrapper,
+                  // NEW: grow the wrapper when selected
+                  isSelected && styles.markerWrapperSelected,
+                ]}>
+                  <Image
+                    source={anchor.isUnlocked ? require('../../assets/unlocked.png') : require('../../assets/locked_p2.png')}
+                    style={styles.markerImage}
+                  />
+                  {/* TODO: ONCE LOGIC FOR OWN ANCHOR IS DONE, UNCOMMENT BOTTOM THING */}
+                  {/*{anchor.isOwn && <View style={styles.ownerBadge} />}*/}
+                </View>
+              </TouchableOpacity>
+            </Mapbox.MarkerView>
+          );
+        })}
 
         {anchorLocation && (
           <>
@@ -878,8 +910,10 @@ export default function DiscoveryScreen() {
                 data={filteredAnchors}
                 keyExtractor={(item) => item.anchor_id}
                 renderItem={({ item }) => (
+                  // NEW: pass isSelected and updated onPress to highlight row
                   <AnchorRowCard
                     anchor={item}
+                    isSelected={selectedAnchorId === item.anchor_id}
                     onPress={() => openAnchorDetails(item.anchor_id)}
                   />
                 )}
@@ -1214,6 +1248,11 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     gap: 8,
   },
+  // NEW: highlighted card style when selected
+  anchorCardSelected: {
+    borderColor: colors.accentPink,
+    backgroundColor: colors.selectedCanvas,
+  },
   anchorRowTop: {
     flexDirection: "row",
     alignItems: "center",
@@ -1447,6 +1486,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   markerWrapper: { width: 30, height: 30 },
+  // NEW: larger wrapper for selected marker
+  markerWrapperSelected: { width: 38, height: 38 },
+  // NEW: pink ring + shadow for selected marker
+  mapMarkerSelected: {
+    borderColor: colors.accentPink,
+    borderWidth: 3,
+    borderRadius: 20,
+    shadowColor: colors.accentPink,
+    shadowOpacity: 0.5,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 6,
+  },
   ownerBadge: {
     position: 'absolute',
     bottom: -2,
