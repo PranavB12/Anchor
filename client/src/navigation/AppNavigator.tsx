@@ -21,7 +21,7 @@ export type RootStackParamList = {
   Discovery: undefined;
   Map: undefined;
   AnchorCreation: { latitude: number; longitude: number; radius: number };
-  EditAnchor: { anchorId: string };
+  EditAnchor: { anchorId: string; radius: number };
   EditProfile: undefined;
 };
 

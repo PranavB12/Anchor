@@ -50,7 +50,7 @@ const DUMMY_ANCHOR_DATA = {
 };
 
 export default function EditAnchor({ navigation, route }: Props) {
-    const { anchorId } = route.params;
+    const { anchorId, radius } = route.params;
     const insets = useSafeAreaInsets();
 
     // Pre-fill all fields from dummy data

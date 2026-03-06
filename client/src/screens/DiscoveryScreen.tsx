@@ -69,10 +69,7 @@ const RADIUS_FACTS: [number, number, string[]][] = [
   [26, 40, ["one blue whale 🐋", "how far a snail can travel in a day 🐌"]],
   [41, 60, ["~10 sedans 🚗", "1 Olympic pools 🏊", "a very ambitious snowball throw ❄️"]],
   [61, 80, ["average frisbee throws 🥏"]],
-  [81, 100, ["the Statue of Liberty tipped over 🗽", "one really committed javelin throw 🥇", "the best paper airplane throw ✈️"]],
-  [101, 130, ["a full football field 🏈", "~10 double-decker buses 🚌"]],
-  [131, 160, ["~2 Doors to Hell 🚪"]],
-  [161, 200, ["the world's longest hot dog"]],
+  [81, 100, ["the Statue of Liberty tipped over 🗽", "one really committed javelin throw 🥇", "the best paper airplane throw ✈️"]]
 ];
 function getRadiusFact(meters: number): string {
   for (const [min, max, labels] of RADIUS_FACTS) {
@@ -198,6 +195,7 @@ export default function DiscoveryScreen() {
   const [isExpanded, setIsExpanded] = useState(false);
 
   const [anchorLocation, setAnchorLocation] = useState<Coordinate | null>(null);
+  const [editingAnchor, setEditingAnchor] = useState<AnchorWithDerivedFields | null>(null);
   const [radius, setRadius] = useState(50);
 
 
@@ -306,16 +304,22 @@ export default function DiscoveryScreen() {
         },
         token,
       );
-      const mapped = response.map<AnchorWithDerivedFields>((anchor) => {
-        const lockMeta = getLockMeta(anchor);
-        return {
-          ...anchor,
-          isUnlocked: lockMeta.isUnlocked,
-          lockLabel: lockMeta.label,
-          visibilityLabel: formatVisibility(anchor.visibility),
-          primaryTag: anchor.tags?.[0] ?? null,
-        };
-      });
+      const currentTime = Date.now();
+      const mapped = response
+        .filter((anchor) => {
+          if (!anchor.expiration_time) return true;
+          return new Date(anchor.expiration_time).getTime() > currentTime;
+        })
+        .map<AnchorWithDerivedFields>((anchor) => {
+          const lockMeta = getLockMeta(anchor);
+          return {
+            ...anchor,
+            isUnlocked: lockMeta.isUnlocked,
+            lockLabel: lockMeta.label,
+            visibilityLabel: formatVisibility(anchor.visibility),
+            primaryTag: anchor.tags?.[0] ?? null,
+          };
+        });
 
       setAnchors(mapped);
     } catch (error) {
@@ -456,20 +460,30 @@ export default function DiscoveryScreen() {
 
   const cancelDropAnchor = () => {
     setAnchorLocation(null);
+    setEditingAnchor(null);
     animateSheet(false);
   };
 
   const radiusShape = useMemo(() => {
-    if (!anchorLocation) return undefined;
-    return circle(anchorLocation, radius, { steps: 64, units: 'meters' });
-  }, [anchorLocation, radius]);
+    if (anchorLocation) {
+      return circle(anchorLocation, radius, { steps: 64, units: 'meters' });
+    }
+    if (editingAnchor) {
+      return circle([editingAnchor.longitude, editingAnchor.latitude], radius, { steps: 64, units: 'meters' });
+    }
+    return undefined;
+  }, [anchorLocation, editingAnchor, radius]);
 
   const handleAnchorPress = (anchor: typeof anchors[0]) => {
     // TODO: CHECK IF THIS IS YOUR ANCHOR OR NOT.
     Alert.alert("Your Anchor", undefined, [
       {
         text: "Edit Anchor",
-        onPress: () => navigation.navigate("EditAnchor", { anchorId: anchor.anchor_id }),
+        onPress: () => {
+          setEditingAnchor(anchor);
+          setRadius(anchor.unlock_radius);
+          animateSheet(true);
+        },
       },
       { text: "Cancel", style: "cancel" },
     ]);
@@ -491,7 +505,7 @@ export default function DiscoveryScreen() {
 
         {!anchorLocation && filteredAnchors.map((anchor) => {
           // NEW: check if this marker is the selected one
-          const isSelected = selectedAnchorId === anchor.anchor_id;
+          const isSelected = selectedAnchorId === anchor.anchor_id || editingAnchor?.anchor_id === anchor.anchor_id;
           return (
             <Mapbox.MarkerView
               key={anchor.anchor_id}
@@ -523,29 +537,29 @@ export default function DiscoveryScreen() {
           );
         })}
 
+        {(anchorLocation || editingAnchor) && radiusShape && (
+          <Mapbox.ShapeSource id="radius-source" shape={radiusShape}>
+            <Mapbox.FillLayer
+              id="radius-fill"
+              style={{ fillColor: colors.accentPink, fillOpacity: 0.2 }}
+            />
+            <Mapbox.LineLayer
+              id="radius-line"
+              style={{ lineColor: colors.accentPink, lineWidth: 1 }}
+            />
+          </Mapbox.ShapeSource>
+        )}
         {anchorLocation && (
-          <>
-            <Mapbox.ShapeSource id="radius-source" shape={radiusShape}>
-              <Mapbox.FillLayer
-                id="radius-fill"
-                style={{ fillColor: colors.accentPink, fillOpacity: 0.2 }}
-              />
-              <Mapbox.LineLayer
-                id="radius-line"
-                style={{ lineColor: colors.accentPink, lineWidth: 1 }}
-              />
-            </Mapbox.ShapeSource>
-            <Mapbox.MarkerView id="anchor-pin" coordinate={anchorLocation}>
-              <View style={styles.mapMarkerDropped}>
-                <Image source={require('../../assets/unlocked.png')} style={{ width: 40, height: 40 }} />
-              </View>
-            </Mapbox.MarkerView>
-          </>
+          <Mapbox.MarkerView id="anchor-pin" coordinate={anchorLocation}>
+            <View style={styles.mapMarkerDropped}>
+              <Image source={require('../../assets/unlocked.png')} style={{ width: 40, height: 40 }} />
+            </View>
+          </Mapbox.MarkerView>
         )}
       </Mapbox.MapView>
 
       {
-        !anchorLocation && (
+        !anchorLocation && !editingAnchor && (
           <>
             <View style={[styles.topBar, { top: insets.top + 12 }]}>
               <View style={styles.searchBar}>
@@ -592,13 +606,13 @@ export default function DiscoveryScreen() {
         style={[
           styles.bottomSheet,
           {
-            height: anchorLocation ? 320 : expandedHeight,
+            height: anchorLocation || editingAnchor ? 320 : expandedHeight,
             paddingBottom: Math.max(insets.bottom, 16),
-            transform: [{ translateY: anchorLocation ? 0 : sheetTranslateY }],
+            transform: [{ translateY: anchorLocation || editingAnchor ? 0 : sheetTranslateY }],
           },
         ]}
       >
-        {!anchorLocation && (
+        {!anchorLocation && !editingAnchor && (
           <TouchableOpacity
             style={styles.handleTouchArea}
             onPress={() => {
@@ -629,7 +643,7 @@ export default function DiscoveryScreen() {
             <Slider
               style={styles.slider}
               minimumValue={10}
-              maximumValue={200}
+              maximumValue={100}
               step={1}
               value={radius}
               onValueChange={setRadius}
@@ -640,7 +654,7 @@ export default function DiscoveryScreen() {
 
             <View style={styles.sliderLabels}>
               <Text style={styles.sliderLabelText}>10m</Text>
-              <Text style={styles.sliderLabelText}>200m</Text>
+              <Text style={styles.sliderLabelText}>100m</Text>
             </View>
 
             <View style={styles.buttonRow}>
@@ -654,6 +668,51 @@ export default function DiscoveryScreen() {
                   navigation.navigate('AnchorCreation', {
                     latitude: anchorLocation[1],
                     longitude: anchorLocation[0],
+                    radius
+                  });
+                }}
+              >
+                <Text style={styles.nextButtonText}>Next</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : editingAnchor ? (
+          <View style={styles.detailContainer}>
+            <View style={styles.radiusHeader}>
+              <Text style={styles.radiusTitle}>Detection Radius</Text>
+              <Text style={styles.radiusValue}>{radius}m</Text>
+            </View>
+
+            <Text style={styles.radiusFact}>≈ {getRadiusFact(radius)}</Text>
+
+            <Slider
+              style={styles.slider}
+              minimumValue={10}
+              maximumValue={100}
+              step={1}
+              value={radius}
+              onValueChange={setRadius}
+              minimumTrackTintColor={colors.accentPink}
+              maximumTrackTintColor={colors.lightMuted}
+              thumbTintColor={colors.accentPink}
+            />
+
+            <View style={styles.sliderLabels}>
+              <Text style={styles.sliderLabelText}>10m</Text>
+              <Text style={styles.sliderLabelText}>100m</Text>
+            </View>
+
+            <View style={styles.buttonRow}>
+              <TouchableOpacity style={styles.cancelButton} onPress={cancelDropAnchor}>
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.nextButton}
+                onPress={() => {
+                  const id = editingAnchor.anchor_id;
+                  setEditingAnchor(null);
+                  navigation.navigate('EditAnchor', {
+                    anchorId: id,
                     radius
                   });
                 }}
