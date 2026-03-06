@@ -15,6 +15,7 @@ class CreateAnchorRequest(BaseModel):
     max_unlock: Optional[int] = None
     activation_time: Optional[datetime] = None
     expiration_time: Optional[datetime] = None
+    always_active: bool = False
     tags: Optional[List[str]] = None
 
 
@@ -29,6 +30,7 @@ class UpdateAnchorRequest(BaseModel):
     max_unlock: Optional[int] = None
     activation_time: Optional[datetime] = None
     expiration_time: Optional[datetime] = None
+    always_active: Optional[bool] = None
     tags: Optional[List[str]] = None
 
 
@@ -47,4 +49,5 @@ class AnchorResponse(BaseModel):
     current_unlock: int
     activation_time: Optional[datetime] = None
     expiration_time: Optional[datetime] = None
+    always_active: bool
     tags: Optional[List[str]] = None

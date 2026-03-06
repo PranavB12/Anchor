@@ -3,6 +3,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Switch,
   StyleSheet,
   Text,
   TextInput,
@@ -50,8 +51,8 @@ export default function AnchorCreation({ navigation, route }: Props) {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Date Entry
-  const [creationManuallySet, setCreationManuallySet] = useState(false);
   const [creationTime, setCreationTime] = useState<Date>(new Date());
+  const [alwaysActive, setAlwaysActive] = useState(true);
   const [expiryTime, setExpiryTime] = useState<Date | null>(null);
   const [dateError, setDateError] = useState<string | null>(null);
 
@@ -78,37 +79,60 @@ export default function AnchorCreation({ navigation, route }: Props) {
     });
   };
 
-  const validateDates = (creation: Date, expiry: Date | null) => {
-    if (expiry && creation >= expiry) {
-      setDateError("Creation time must be before expiry time.");
-      return false;
+  const getDateValidationError = (
+    creation: Date,
+    expiry: Date | null,
+    alwaysOn: boolean,
+  ): string | null => {
+    // Allow slight client/server timing drift for "now".
+    const now = new Date(Date.now() - 60 * 1000);
+    if (creation < now) {
+      return "Start time cannot be in the past.";
     }
-    setDateError(null);
-    return true;
+    if (!alwaysOn) {
+      if (!expiry) {
+        return "Please set an end time or turn on Always active.";
+      }
+      if (expiry < now) {
+        return "End time cannot be in the past.";
+      }
+      if (expiry <= creation) {
+        return "End time must be after start time.";
+      }
+    }
+    return null;
+  };
+
+  const validateDates = (creation: Date, expiry: Date | null, alwaysOn: boolean) => {
+    const error = getDateValidationError(creation, expiry, alwaysOn);
+    setDateError(error);
+    return !error;
   };
 
   const handleSetCreation = (date: Date) => {
     setCreationTime(date);
-    setCreationManuallySet(true);
-    validateDates(date, expiryTime);
+    validateDates(date, expiryTime, alwaysActive);
   };
 
   const handleSetExpiry = (date: Date) => {
     setExpiryTime(date);
-    validateDates(creationTime, date);
-  };
-
-  const handleClearCreation = () => {
-    const now = new Date();
-    setCreationTime(now);
-    setCreationManuallySet(false);
-    setDateError(null);
-    if (expiryTime) validateDates(now, expiryTime);
+    validateDates(creationTime, date, alwaysActive);
   };
 
   const handleClearExpiry = () => {
     setExpiryTime(null);
-    setDateError(null);
+    validateDates(creationTime, null, alwaysActive);
+  };
+
+  const handleToggleAlwaysActive = (value: boolean) => {
+    setAlwaysActive(value);
+    if (value) {
+      setExpiryTime(null);
+      setShowExpiryPicker(false);
+      validateDates(creationTime, null, true);
+      return;
+    }
+    validateDates(creationTime, expiryTime, false);
   };
 
   // Android date picker. iOS will probably need a different one, will have to test on iOS with an iOS device.
@@ -119,7 +143,7 @@ export default function AnchorCreation({ navigation, route }: Props) {
       value: initialDate,
       mode: 'date',
       display: 'calendar',
-      minimumDate: isCreation ? undefined : new Date(),
+      minimumDate: new Date(),
       onChange: (event, date) => {
         if (event.type === 'set' && date) {
           // 2. Once date is selected, open Time Picker
@@ -151,6 +175,9 @@ export default function AnchorCreation({ navigation, route }: Props) {
   };
 
   const handlePressExpiry = () => {
+    if (alwaysActive) {
+      return;
+    }
     if (Platform.OS === 'android') {
       showAndroidPicker('expiry');
     } else {
@@ -188,7 +215,9 @@ export default function AnchorCreation({ navigation, route }: Props) {
 
   // Submitting logic
   const handleDropAnchor = async () => {
-    if (dateError) return;
+    if (!validateDates(creationTime, expiryTime, alwaysActive)) {
+      return;
+    }
     if (!title.trim()) {
       Alert.alert("Missing Title", "Please give your anchor a name.");
       return;
@@ -206,8 +235,9 @@ export default function AnchorCreation({ navigation, route }: Props) {
       longitude,
       visibility: visibilityMap[visibility],
       unlock_radius: Math.round(radius),
-      activation_time: creationManuallySet ? creationTime.toISOString() : null,
-      expiration_time: expiryTime ? expiryTime.toISOString() : null,
+      activation_time: creationTime.toISOString(),
+      expiration_time: alwaysActive ? null : (expiryTime ? expiryTime.toISOString() : null),
+      always_active: alwaysActive,
       description: content.trim() || null,
       max_unlock: maxUnlock.trim() ? parseInt(maxUnlock, 10) : null,
       tags: tags
@@ -365,6 +395,15 @@ export default function AnchorCreation({ navigation, route }: Props) {
 
           {/* DATE AND TIME FOR CREATION/EXPIRY UI */}
           <Text style={styles.sectionLabel}>Expiry Settings</Text>
+          <View style={styles.alwaysActiveRow}>
+            <Text style={styles.alwaysActiveLabel}>Always Active</Text>
+            <Switch
+              value={alwaysActive}
+              onValueChange={handleToggleAlwaysActive}
+              trackColor={{ false: "#d1d5db", true: "#f7a2b4" }}
+              thumbColor={alwaysActive ? colors.accentPink : "#f9fafb"}
+            />
+          </View>
           {dateError && (
             <View style={styles.errorBanner}>
               <Feather name="alert-circle" size={14} color={colors.error} />
@@ -373,27 +412,22 @@ export default function AnchorCreation({ navigation, route }: Props) {
           )}
 
 
-          <View style={[styles.optionCard, creationManuallySet && styles.optionCardSelected]}>
+          <View style={[styles.optionCard, styles.optionCardSelected]}>
             <TouchableOpacity
               style={styles.dateCardMain}
               onPress={handlePressCreation}
               activeOpacity={0.7}
             >
-              <View style={[styles.iconContainer, creationManuallySet ? styles.iconContainerSelected : styles.iconContainerOutline]}>
-                <Feather name="calendar" size={20} color={creationManuallySet ? colors.white : colors.accentPink} />
+              <View style={[styles.iconContainer, styles.iconContainerSelected]}>
+                <Feather name="calendar" size={20} color={colors.white} />
               </View>
               <View style={styles.optionTextContainer}>
-                <Text style={styles.optionTitle}>Creation Date & Time</Text>
+                <Text style={styles.optionTitle}>Start Date & Time</Text>
                 <Text style={styles.optionSubtitle}>
-                  {!creationManuallySet ? "Current time (tap to change)" : formatDateTime(creationTime)}
+                  {formatDateTime(creationTime)}
                 </Text>
               </View>
             </TouchableOpacity>
-            {creationManuallySet && (
-              <TouchableOpacity onPress={handleClearCreation} style={styles.clearBtn} hitSlop={8}>
-                <Feather name="x" size={16} color={colors.muted} />
-              </TouchableOpacity>
-            )}
           </View>
 
           {Platform.OS === 'ios' && showCreationPicker && (
@@ -410,30 +444,50 @@ export default function AnchorCreation({ navigation, route }: Props) {
             />
           )}
 
-          <View style={[styles.optionCard, !!expiryTime && styles.optionCardSelected]}>
+          <View
+            style={[
+              styles.optionCard,
+              !alwaysActive && !!expiryTime && styles.optionCardSelected,
+              alwaysActive && styles.optionCardDisabled,
+            ]}
+          >
             <TouchableOpacity
               style={styles.dateCardMain}
               onPress={handlePressExpiry}
+              disabled={alwaysActive}
               activeOpacity={0.7}
             >
-              <View style={[styles.iconContainer, expiryTime ? styles.iconContainerSelected : styles.iconContainerOutline]}>
-                <Feather name="calendar" size={20} color={expiryTime ? colors.white : colors.accentPink} />
+              <View
+                style={[
+                  styles.iconContainer,
+                  !alwaysActive && expiryTime ? styles.iconContainerSelected : styles.iconContainerOutline,
+                ]}
+              >
+                <Feather
+                  name="calendar"
+                  size={20}
+                  color={!alwaysActive && expiryTime ? colors.white : colors.accentPink}
+                />
               </View>
               <View style={styles.optionTextContainer}>
-                <Text style={styles.optionTitle}>Expiry Date & Time</Text>
+                <Text style={styles.optionTitle}>End Date & Time</Text>
                 <Text style={styles.optionSubtitle}>
-                  {expiryTime ? formatDateTime(expiryTime) : "Set specific expiry (optional)"}
+                  {alwaysActive
+                    ? "Disabled while Always Active is on"
+                    : expiryTime
+                      ? formatDateTime(expiryTime)
+                      : "Set specific end time"}
                 </Text>
               </View>
             </TouchableOpacity>
-            {expiryTime && (
+            {!alwaysActive && expiryTime && (
               <TouchableOpacity onPress={handleClearExpiry} style={styles.clearBtn} hitSlop={8}>
                 <Feather name="x" size={16} color={colors.muted} />
               </TouchableOpacity>
             )}
           </View>
 
-          {Platform.OS === 'ios' && showExpiryPicker && (
+          {Platform.OS === 'ios' && showExpiryPicker && !alwaysActive && (
             <DateTimePicker
               value={expiryTime || new Date()}
               mode="datetime"
@@ -712,6 +766,17 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: 12,
   },
+  alwaysActiveRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  alwaysActiveLabel: {
+    fontSize: 14,
+    color: colors.text,
+    fontWeight: "600",
+  },
   input: {
     borderWidth: 1,
     borderColor: colors.border,
@@ -775,6 +840,9 @@ const styles = StyleSheet.create({
   optionCardSelected: {
     borderColor: colors.accentPink,
     backgroundColor: colors.selectedCanvas,
+  },
+  optionCardDisabled: {
+    opacity: 0.6,
   },
   iconContainer: {
     width: 44,

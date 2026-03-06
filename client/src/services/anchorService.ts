@@ -19,6 +19,7 @@ export type NearbyAnchor = {
   current_unlock: number;
   activation_time: string | null;
   expiration_time: string | null;
+  always_active: boolean;
   tags: string[] | null;
 };
 
@@ -33,6 +34,7 @@ export type CreateAnchorBody = {
   max_unlock?: number | null;
   activation_time?: string | null;
   expiration_time?: string | null;
+  always_active?: boolean;
   tags?: string[] | null;
 };
 
