@@ -136,6 +136,8 @@ def create_anchor(
     # Serialize tags list to JSON string for DB storage, or None if no tags provided
     tags_json = json.dumps(payload.tags) if payload.tags else None
 
+    activation_time = payload.activation_time if payload.activation_time else datetime.utcnow()
+
     db.execute(
         text("""
             INSERT INTO anchors
@@ -161,6 +163,7 @@ def create_anchor(
             "max_unlock": payload.max_unlock,
             "activation_time": activation_time,
             "expiration_time": expiration_time,
+            "expiration_time": payload.expiration_time,
             "tags": tags_json,
         },
     )
@@ -428,6 +431,13 @@ def get_nearby_anchors(
     Uses MySQL ST_Distance_Sphere for accurate great-circle distance in meters.
     Filters are appended dynamically to the WHERE clause only if provided.
     """
+
+    # Mark passed anchors as EXPIRED before retrieving
+    db.execute(
+        text("UPDATE anchors SET status = 'EXPIRED' WHERE status = 'ACTIVE' AND expiration_time <= :now"),
+        {"now": datetime.utcnow()}
+    )
+    db.commit()
 
     # Start with base params; filters string is built up conditionally below
     filters = ""

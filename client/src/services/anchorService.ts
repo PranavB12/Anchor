@@ -70,3 +70,29 @@ export async function getNearbyAnchors(
     token,
   });
 }
+
+export type UpdateAnchorBody = {
+  title?: string;
+  description?: string | null;
+  visibility?: AnchorVisibility;
+  unlock_radius?: number;
+  max_unlock?: number | null;
+  activation_time?: string | null;
+  expiration_time?: string | null;
+  tags?: string[] | null;
+};
+
+export async function updateAnchor(anchorId: string, body: UpdateAnchorBody, token: string) {
+  return apiRequest<NearbyAnchor>(`/anchors/${anchorId}`, {
+    method: "PATCH",
+    token,
+    body,
+  });
+}
+
+export async function deleteAnchor(anchorId: string, token: string) {
+  return apiRequest<{ message: string }>(`/anchors/${anchorId}`, {
+    method: "DELETE",
+    token,
+  });
+}
