@@ -21,7 +21,7 @@ import DateTimePicker, {
 } from "@react-native-community/datetimepicker";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../context/AuthContext";
-import { updateAnchor } from "../services/anchorService";
+import { updateAnchor, deleteAnchor } from "../services/anchorService";
 
 type Props = NativeStackScreenProps<RootStackParamList, "EditAnchor">;
 
@@ -495,7 +495,17 @@ export default function EditAnchor({ navigation, route }: Props) {
                                 "This anchor will be permanently removed.",
                                 [
                                     { text: "Cancel", style: "cancel" },
-                                    { text: "Delete", style: "destructive", onPress: () => navigation.navigate("Map") },
+                                    {
+                                        text: "Delete", style: "destructive", onPress: async () => {
+                                            if (!session?.access_token) return;
+                                            try {
+                                                await deleteAnchor(anchor.anchor_id, session.access_token);
+                                                navigation.navigate("Discovery");
+                                            } catch (err) {
+                                                Alert.alert("Error", err instanceof Error ? err.message : "Failed to delete anchor.");
+                                            }
+                                        }
+                                    },
                                 ]
                             )
                         }
