@@ -221,9 +221,14 @@ def update_anchor(
             detail="expiration_time cannot be in the past",
         )
 
+    # Resolve what the effective activation/expiration will be after this update,
+    # using the incoming payload value if provided, otherwise falling back to the
+    # existing DB value. This is needed to validate the window before writing anything.
     effective_activation = (
         payload.activation_time if payload.activation_time is not None else row.activation_time
     )
+    # If always_active is being set to True, clear expiration regardless of what was sent.
+    # Otherwise use the new expiration_time if provided, or keep the existing one.
     if payload.always_active is True:
         effective_expiration = None
     elif payload.expiration_time is not None:
@@ -231,13 +236,15 @@ def update_anchor(
     else:
         effective_expiration = row.expiration_time
 
+    # Validate the resolved window — expiration must come after activation
     if effective_activation and effective_expiration and effective_expiration <= effective_activation:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="expiration_time must be after activation_time",
         )
 
-    # Build a dict of only the fields that were actually provided
+    # Build a dict of only the fields that were actually provided.
+    # None values are skipped so unmentioned fields are left unchanged in the DB.
     fields = {}
     if payload.title is not None:
         fields["title"] = payload.title
@@ -253,6 +260,7 @@ def update_anchor(
         fields["altitude"] = payload.altitude
     if payload.activation_time is not None:
         fields["activation_time"] = payload.activation_time
+    # always_active=True explicitly clears expiration_time in the DB
     if payload.always_active is True:
         fields["expiration_time"] = None
     elif payload.expiration_time is not None:
