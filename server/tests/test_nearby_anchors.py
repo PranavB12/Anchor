@@ -40,7 +40,7 @@ def auth_headers(token: str) -> dict:
 
 
 def create_anchor(token: str, title: str, lat: float, lon: float, visibility: str = "PUBLIC"):
-    """Helper to create a test anchor."""
+    """Helper to create a test anchor. Uses always_active=True to avoid time-based failures."""
     payload = {
         "title": title,
         "description": "Test anchor",
@@ -50,8 +50,7 @@ def create_anchor(token: str, title: str, lat: float, lon: float, visibility: st
         "visibility": visibility,
         "unlock_radius": 50,
         "max_unlock": None,
-        "activation_time": "2026-01-01T00:00:00",
-        "expiration_time": "2026-12-31T00:00:00",
+        "always_active": True,
         "tags": [],
     }
     response = client.post("/anchors/", json=payload, headers=auth_headers(token))
