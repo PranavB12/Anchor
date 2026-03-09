@@ -335,6 +335,22 @@ export default function DiscoveryScreen() {
     void loadAnchors();
   }, [loadAnchors]);
 
+  //Request foreground location permissions on mount and center map on user
+  useEffect(() => {
+    const requestLocation = async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        // Permission denied — map will fall back to FALLBACK_CENTER
+        return;
+      }
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      setUserCoordinate([location.coords.longitude, location.coords.latitude]);
+    };
+    void requestLocation();
+  }, []);
+
   const topNearbyTags = useMemo(() => {
     const counts = new Map<string, number>();
     for (const anchor of anchors) {
