@@ -290,6 +290,8 @@ export default function DiscoveryScreen() {
     const token = session?.access_token;
     if (!token) return;
 
+    const center = userCoordinate ?? FALLBACK_CENTER;
+
     setIsLoading(true);
     setErrorMessage(null);
 
@@ -297,8 +299,8 @@ export default function DiscoveryScreen() {
 
       const response = await getNearbyAnchors(
         {
-          lat: FALLBACK_CENTER[1],
-          lon: FALLBACK_CENTER[0],
+          lat: center[1],
+          lon: center[0],
           radiusKm: 1000,
           sortBy: "distance",
         },
@@ -329,7 +331,7 @@ export default function DiscoveryScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [session?.access_token]);
+  }, [session?.access_token, userCoordinate]);
 
   useEffect(() => {
     void loadAnchors();
