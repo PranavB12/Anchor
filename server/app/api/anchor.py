@@ -422,6 +422,59 @@ def unlock_anchor(
 
 # ── Nearby Anchors (US12 #3) ──────────────────────────────────────────────────
 
+@router.get("/", response_model=List[AnchorResponse])
+def get_all_anchors(
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    """
+    US12 #5 — Return all anchors in the database.
+    No location filtering — used when the caller wants a full list regardless of proximity.
+    Results are ordered by creation time descending (newest first).
+    """
+    rows = db.execute(
+        text("""
+            SELECT
+                anchor_id, creator_id, title, description,
+                ST_X(location) AS longitude, ST_Y(location) AS latitude,
+                altitude, status, visibility, unlock_radius,
+                max_unlock, current_unlock, activation_time,
+                expiration_time, tags
+            FROM anchors
+            ORDER BY activation_time DESC
+        """)
+    ).fetchall()
+
+    results = []
+    for row in rows:
+        tags = row.tags
+        if isinstance(tags, str):
+            try:
+                tags = json.loads(tags)
+            except Exception:
+                tags = []
+        results.append(AnchorResponse(
+            anchor_id=row.anchor_id,
+            creator_id=row.creator_id,
+            title=row.title,
+            description=row.description,
+            latitude=row.latitude,
+            longitude=row.longitude,
+            altitude=row.altitude,
+            status=row.status,
+            visibility=row.visibility,
+            unlock_radius=row.unlock_radius,
+            max_unlock=row.max_unlock,
+            current_unlock=row.current_unlock,
+            activation_time=row.activation_time,
+            expiration_time=row.expiration_time,
+            always_active=row.expiration_time is None,
+            tags=tags,
+        ))
+
+    return results
+
+
 @router.get("/nearby", response_model=List[AnchorResponse])
 def get_nearby_anchors(
     lat: float = Query(..., description="User's current latitude"),
