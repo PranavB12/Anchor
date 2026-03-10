@@ -201,3 +201,45 @@ class TestNearbyAnchors:
         anchors = response.json()
         for anchor in anchors:
             assert anchor["visibility"] == "PUBLIC"
+
+class TestLocationBasedDiscovery:
+
+    def test_anchors_returned_for_real_coordinates(self):
+        """Anchors near valid user coordinates are returned correctly."""
+        token = get_token()
+        create_anchor(token, "Location Test Anchor", lat=40.4237, lon=-86.9212)
+
+        response = client.get(
+            "/anchors/nearby",
+            params={"lat": 40.4237, "lon": -86.9212, "radius_km": 50, "sort_by": "distance"},
+            headers=auth_headers(token),
+        )
+        assert response.status_code == 200
+        anchors = response.json()
+        assert any(a["title"] == "Location Test Anchor" for a in anchors)
+
+    def test_fallback_coordinates_return_west_lafayette_anchors(self):
+        """Anchors near the fallback center (West Lafayette) are returned correctly."""
+        token = get_token()
+        create_anchor(token, "Fallback Center Anchor", lat=40.4237, lon=-86.9081)
+
+        response = client.get(
+            "/anchors/nearby",
+            params={"lat": 40.4237, "lon": -86.9081, "radius_km": 50, "sort_by": "distance"},
+            headers=auth_headers(token),
+        )
+        assert response.status_code == 200
+        anchors = response.json()
+        assert any(a["title"] == "Fallback Center Anchor" for a in anchors)
+
+    def test_no_anchors_returned_for_denied_location(self):
+        """When location is denied and fallback is far from any anchors, empty list is returned."""
+        token = get_token()
+
+        response = client.get(
+            "/anchors/nearby",
+            params={"lat": 0.0, "lon": 0.0, "radius_km": 1},
+            headers=auth_headers(token),
+        )
+        assert response.status_code == 200
+        assert response.json() == []
