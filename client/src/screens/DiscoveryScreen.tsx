@@ -337,20 +337,31 @@ export default function DiscoveryScreen() {
     void loadAnchors();
   }, [loadAnchors]);
 
-  //Request foreground location permissions on mount and center map on user
   useEffect(() => {
-    const requestLocation = async () => {
+    let subscription: Location.LocationSubscription | null = null;
+
+    const startWatching = async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
         // Permission denied — map will fall back to FALLBACK_CENTER
         return;
       }
-      const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      setUserCoordinate([location.coords.longitude, location.coords.latitude]);
+      subscription = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.Balanced,
+          distanceInterval: 10, // update every 10 meters of movement
+        },
+        (location) => {
+          setUserCoordinate([location.coords.longitude, location.coords.latitude]);
+        },
+      );
     };
-    void requestLocation();
+
+    void startWatching();
+
+    return () => {
+      subscription?.remove();
+    };
   }, []);
 
   const topNearbyTags = useMemo(() => {
