@@ -93,6 +93,23 @@ create table if not exists link_content (
     foreign key (content_id) references Content(content_id) on delete cascade
 );
 
+CREATE TABLE IF NOT EXISTS reports (
+    report_id       CHAR(36)                                                        PRIMARY KEY,
+    anchor_id       CHAR(36)                                                        NOT NULL,
+    reporter_id     CHAR(36)                                                        NOT NULL,
+    reason          ENUM('SPAM', 'INAPPROPRIATE', 'HARASSMENT', 'MISINFORMATION', 'OTHER') NOT NULL,
+    description     TEXT                                                            NULL,
+    status          ENUM('PENDING', 'DISMISSED', 'ACTIONED')                       NOT NULL DEFAULT 'PENDING',
+    created_at      DATETIME                                                        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    reviewed_at     DATETIME                                                        NULL,
+
+    FOREIGN KEY (anchor_id) REFERENCES anchors(anchor_id) ON DELETE CASCADE,
+    FOREIGN KEY (reporter_id) REFERENCES users(user_id) ON DELETE CASCADE,
+    UNIQUE KEY uq_report_per_user (anchor_id, reporter_id),
+    INDEX idx_reports_anchor_id (anchor_id),
+    INDEX idx_reports_status (status)
+);
+
 -- ---------------------------------------------------------------------------
 -- Seed data for local development
 -- ---------------------------------------------------------------------------
