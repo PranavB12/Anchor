@@ -93,6 +93,8 @@ def update_profile(
         fields["bio"] = payload.bio
     if payload.avatar_url is not None:
         fields["avatar_url"] = payload.avatar_url
+    if payload.is_ghost_mode is not None:
+        fields["is_ghost_mode"] = payload.is_ghost_mode
 
     if fields:
         set_clause = ", ".join(f"{k} = :{k}" for k in fields)
