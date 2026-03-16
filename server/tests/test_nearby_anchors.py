@@ -9,9 +9,13 @@ Tests:
     - Empty results when no anchors in radius
 """
 
+import uuid
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import text
+
 from app.main import app
+from app.core.database import SessionLocal
 
 client = TestClient(app)
 
@@ -26,6 +30,17 @@ def get_token():
     global _token_cache
     if _token_cache:
         return _token_cache
+
+    # Register if needed, otherwise log in.
+    register_response = client.post("/auth/register", json={
+        "email": "user2@example.com",
+        "password": "testpass123",
+        "username": "user2_test",
+    })
+    if register_response.status_code == 201:
+        _token_cache = register_response.json()["access_token"]
+        return _token_cache
+
     response = client.post("/auth/login", json={
         "email": "user2@example.com",
         "password": "testpass123",
@@ -56,6 +71,28 @@ def create_anchor(token: str, title: str, lat: float, lon: float, visibility: st
     response = client.post("/anchors/", json=payload, headers=auth_headers(token))
     assert response.status_code == 201
     return response.json()
+
+
+def attach_content(anchor_id: str, content_type: str):
+    """Insert content metadata row for content_type filter tests."""
+    content_id = str(uuid.uuid4())
+    db = SessionLocal()
+    try:
+        db.execute(
+            text("""
+                INSERT INTO Content (content_id, anchor_id, content_type, size_bytes)
+                VALUES (:content_id, :anchor_id, :content_type, :size_bytes)
+            """),
+            {
+                "content_id": content_id,
+                "anchor_id": anchor_id,
+                "content_type": content_type,
+                "size_bytes": 128,
+            },
+        )
+        db.commit()
+    finally:
+        db.close()
 
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
@@ -158,6 +195,48 @@ class TestNearbyAnchors:
         response = client.get(
             "/anchors/nearby",
             params={"lat": 40.4237, "lon": -86.9212, "radius_km": 50, "anchor_status": "INVALID"},
+            headers=auth_headers(token),
+        )
+        assert response.status_code == 400
+
+    def test_filter_by_content_type(self):
+        """Filter returns only anchors that have the requested content type."""
+        token = get_token()
+        text_anchor = create_anchor(token, "Text Content Anchor", lat=40.4237, lon=-86.9212)
+        file_anchor = create_anchor(token, "File Content Anchor", lat=40.4238, lon=-86.9213)
+        attach_content(text_anchor["anchor_id"], "TEXT")
+        attach_content(file_anchor["anchor_id"], "FILE")
+
+        response = client.get(
+            "/anchors/nearby",
+            params=[
+                ("lat", 40.4237),
+                ("lon", -86.9212),
+                ("radius_km", 50),
+                ("content_type", "TEXT"),
+            ],
+            headers=auth_headers(token),
+        )
+        assert response.status_code == 200
+        anchors = response.json()
+        assert len(anchors) > 0
+        assert all(
+            "TEXT" in (anchor.get("content_type") or [])
+            for anchor in anchors
+        )
+        assert all(anchor["anchor_id"] != file_anchor["anchor_id"] for anchor in anchors)
+
+    def test_invalid_content_type_filter(self):
+        """Invalid content_type filter returns 400."""
+        token = get_token()
+        response = client.get(
+            "/anchors/nearby",
+            params={
+                "lat": 40.4237,
+                "lon": -86.9212,
+                "radius_km": 50,
+                "content_type": "VIDEO",
+            },
             headers=auth_headers(token),
         )
         assert response.status_code == 400
