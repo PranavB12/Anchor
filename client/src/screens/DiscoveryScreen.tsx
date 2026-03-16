@@ -61,8 +61,6 @@ const colors = {
   blue: "#4285F4",
 };
 
-const [isGhostMode, setIsGhostMode] = useState(false);
-
 const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN;
 Mapbox.setAccessToken(MAPBOX_TOKEN ?? "");
 
@@ -201,6 +199,7 @@ export default function DiscoveryScreen() {
   const [editingAnchor, setEditingAnchor] = useState<AnchorWithDerivedFields | null>(null);
   const [radius, setRadius] = useState(50);
 
+  const [isGhostMode, setIsGhostMode] = useState(false);
 
   const collapsedHeight = 116;
   const expandedHeight = Math.min(windowHeight * 0.72, windowHeight - 128);
@@ -335,7 +334,7 @@ export default function DiscoveryScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [session?.access_token, userCoordinate]);
+  }, [session?.access_token, userCoordinate, isGhostMode]);
 
   useEffect(() => {
     void loadAnchors();
