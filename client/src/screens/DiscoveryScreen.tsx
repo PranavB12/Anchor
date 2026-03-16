@@ -33,6 +33,7 @@ import {
 } from "../services/anchorService";
 import circle from "@turf/circle";
 import Slider from "@react-native-community/slider";
+import { getProfile } from "../services/authService";
 
 type Coordinate = [number, number];
 
@@ -198,6 +199,7 @@ export default function DiscoveryScreen() {
   const [editingAnchor, setEditingAnchor] = useState<AnchorWithDerivedFields | null>(null);
   const [radius, setRadius] = useState(50);
 
+  const [isGhostMode, setIsGhostMode] = useState(false);
 
   const collapsedHeight = 116;
   const expandedHeight = Math.min(windowHeight * 0.72, windowHeight - 128);
@@ -289,6 +291,7 @@ export default function DiscoveryScreen() {
   const loadAnchors = useCallback(async () => {
     const token = session?.access_token;
     if (!token) return;
+    if (isGhostMode) return;
 
     const center = userCoordinate ?? FALLBACK_CENTER;
 
@@ -331,13 +334,27 @@ export default function DiscoveryScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [session?.access_token, userCoordinate]);
+  }, [session?.access_token, userCoordinate, isGhostMode]);
 
   useEffect(() => {
     void loadAnchors();
   }, [loadAnchors]);
 
   useEffect(() => {
+    const loadGhostMode = async () => {
+      if (!session?.access_token) return;
+      try {
+        const profile = await getProfile(session.access_token);
+        setIsGhostMode(profile.is_ghost_mode ?? false);
+      } catch {
+      }
+    };
+    void loadGhostMode();
+  }, [session?.access_token]);
+
+  useEffect(() => {
+    if (isGhostMode) return;
+
     let subscription: Location.LocationSubscription | null = null;
 
     const startWatching = async () => {
@@ -362,7 +379,7 @@ export default function DiscoveryScreen() {
     return () => {
       subscription?.remove();
     };
-  }, []);
+  }, [isGhostMode]);
 
   const topNearbyTags = useMemo(() => {
     const counts = new Map<string, number>();
