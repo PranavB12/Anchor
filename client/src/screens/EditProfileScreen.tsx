@@ -13,6 +13,7 @@ import {
   TextInput,
   TouchableWithoutFeedback,
   View,
+  Switch, 
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -33,6 +34,8 @@ export default function EditProfileScreen({ navigation }: Props) {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [isGhostMode, setIsGhostMode] = useState(false);
+
 
   // Load current profile on mount and pre-fill all fields
   useEffect(() => {
@@ -44,6 +47,7 @@ export default function EditProfileScreen({ navigation }: Props) {
         setEmail(profile.email ?? "");
         setBio(profile.bio ?? "");
         setAvatarUrl(profile.avatar_url ?? "");
+        setIsGhostMode(profile.is_ghost_mode ?? false);
       } catch {
         setError("Failed to load profile.");
       } finally {
@@ -77,6 +81,7 @@ export default function EditProfileScreen({ navigation }: Props) {
           email: email.trim(),
           bio: bio.trim() || undefined,
           avatar_url: avatarUrl.trim() || undefined,
+          is_ghost_mode: isGhostMode,
         },
         session!.access_token,
       );
@@ -187,6 +192,19 @@ export default function EditProfileScreen({ navigation }: Props) {
                 style={styles.input}
                 value={avatarUrl}
               />
+
+              <Text style={styles.label}>Ghost Mode</Text>
+              <View style={styles.ghostModeRow}>
+                <Text style={styles.ghostModeDescription}>
+                  Hide your location and stop nearby Anchor updates
+                </Text>
+                <Switch
+                  value={isGhostMode}
+                  onValueChange={setIsGhostMode}
+                  trackColor={{ false: colors.border, true: colors.accentPink }}
+                  thumbColor={colors.white}
+                />
+              </View>
 
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
@@ -312,5 +330,17 @@ const styles = StyleSheet.create({
     color: colors.accentPink,
     fontSize: 16,
     fontWeight: "700",
+  },
+  ghostModeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 8,
+  },
+  ghostModeDescription: {
+    flex: 1,
+    fontSize: 13,
+    color: colors.muted,
+    marginRight: 12,
   },
 });

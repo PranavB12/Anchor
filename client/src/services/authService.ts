@@ -76,6 +76,7 @@ export type UpdateProfileRequest = {
   email?: string;
   bio?: string;
   avatar_url?: string;
+  is_ghost_mode?: boolean;
 };
 
 export type ProfileResponse = {
