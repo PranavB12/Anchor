@@ -7,7 +7,7 @@ class UpdateProfileRequest(BaseModel):
     email: Optional[EmailStr] = None
     bio: Optional[str] = None
     avatar_url: Optional[str] = None
-    is_ghost_mode: Optional[str] = None
+    is_ghost_mode: Optional[bool] = None
 
 
 class ProfileResponse(BaseModel):
