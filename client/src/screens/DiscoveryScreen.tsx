@@ -627,6 +627,13 @@ export default function DiscoveryScreen() {
               </TouchableOpacity>
             </View>
 
+            {isGhostMode && (
+              <View style={[styles.ghostModeBanner, { top: insets.top + 72 }]}>
+                <Feather name="eye-off" size={14} color={colors.white} />
+                <Text style={styles.ghostModeBannerText}>Ghost Mode is on — location hidden</Text>
+              </View>
+            )}
+
             <Animated.View
               style={[
                 styles.addButtonWrap,
@@ -1615,5 +1622,22 @@ const styles = StyleSheet.create({
   markerImage: {
     width: '100%',
     height: '100%',
+  },
+  ghostModeBanner: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    backgroundColor: "#1f2937",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  ghostModeBannerText: {
+    color: colors.white,
+    fontSize: 13,
+    fontWeight: "600",
   },
 });
