@@ -31,6 +31,7 @@ import {
   getNearbyAnchors,
   type NearbyAnchor,
 } from "../services/anchorService";
+import ReportAnchorModal from "../components/ReportAnchorModal";
 import circle from "@turf/circle";
 import Slider from "@react-native-community/slider";
 import { getProfile } from "../services/authService";
@@ -191,6 +192,7 @@ export default function DiscoveryScreen() {
   const [draftSelectedTags, setDraftSelectedTags] = useState<string[]>([]);
   const [isTagFilterOpen, setIsTagFilterOpen] = useState(false);
   const [selectedAnchorId, setSelectedAnchorId] = useState<string | null>(null);
+  const [isReportModalVisible, setIsReportModalVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -867,6 +869,18 @@ export default function DiscoveryScreen() {
                 listScrollOffset.current = event.nativeEvent.contentOffset.y;
               }}
               scrollEventThrottle={16}
+              ListFooterComponent={
+                selectedAnchor.creator_id !== session?.user_id ? (
+                  <TouchableOpacity
+                    style={styles.reportButton}
+                    onPress={() => setIsReportModalVisible(true)}
+                    activeOpacity={0.7}
+                  >
+                    <Feather name="flag" size={14} color={colors.muted} />
+                    <Text style={styles.reportButtonText}>Report Anchor</Text>
+                  </TouchableOpacity>
+                ) : null
+              }
             />
           </View>
         ) : isExpanded ? (
@@ -1058,6 +1072,19 @@ export default function DiscoveryScreen() {
           </TouchableOpacity>
         )}
       </Animated.View>
+
+      {selectedAnchor && (
+        <ReportAnchorModal
+          visible={isReportModalVisible}
+          anchorTitle={selectedAnchor.title}
+          onClose={() => setIsReportModalVisible(false)}
+          onSubmit={(_reason, _description) => {
+            // TODO: connect to backend
+            setIsReportModalVisible(false);
+            Alert.alert("Report submitted", "Thanks for helping keep Anchor safe.");
+          }}
+        />
+      )}
     </View >
   );
 }
@@ -1639,5 +1666,21 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: 13,
     fontWeight: "600",
+  },
+  reportButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    marginTop: 8,
+    marginBottom: 4,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+  },
+  reportButtonText: {
+    fontSize: 14,
+    color: colors.muted,
   },
 });

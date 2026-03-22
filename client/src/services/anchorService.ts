@@ -96,3 +96,37 @@ export async function deleteAnchor(anchorId: string, token: string) {
     token,
   });
 }
+
+export type ReportReason =
+  | "SPAM"
+  | "INAPPROPRIATE"
+  | "HARASSMENT"
+  | "MISINFORMATION"
+  | "OTHER";
+
+export type ReportAnchorBody = {
+  reason: ReportReason;
+  description?: string;
+};
+
+export type ReportResponse = {
+  report_id: string;
+  anchor_id: string;
+  reporter_id: string;
+  reason: ReportReason;
+  description: string | null;
+  status: string;
+  created_at: string;
+};
+
+export async function reportAnchor(
+  anchorId: string,
+  body: ReportAnchorBody,
+  token: string,
+) {
+  return apiRequest<ReportResponse>(`/anchors/${anchorId}/report`, {
+    method: "POST",
+    token,
+    body,
+  });
+}
