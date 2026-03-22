@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.auth import router as auth_router
 from app.api.user import router as user_router
 from app.api.anchor import router as anchor_router
+from app.api.report import router as report_router
 
 app = FastAPI(
     title="Anchor API",
@@ -28,6 +29,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(user_router)
 app.include_router(anchor_router)
+app.include_router(report_router)
 
 
 @app.get("/")
