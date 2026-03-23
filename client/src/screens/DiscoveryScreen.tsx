@@ -29,7 +29,9 @@ import { useAuth } from "../context/AuthContext";
 import type { RootStackParamList } from "../navigation/AppNavigator";
 import {
   getNearbyAnchors,
+  reportAnchor,
   type NearbyAnchor,
+  type ReportReason,
 } from "../services/anchorService";
 import ReportAnchorModal from "../components/ReportAnchorModal";
 import circle from "@turf/circle";
@@ -1078,10 +1080,16 @@ export default function DiscoveryScreen() {
           visible={isReportModalVisible}
           anchorTitle={selectedAnchor.title}
           onClose={() => setIsReportModalVisible(false)}
-          onSubmit={(_reason, _description) => {
-            // TODO: connect to backend
-            setIsReportModalVisible(false);
-            Alert.alert("Report submitted", "Thanks for helping keep Anchor safe.");
+          onSubmit={async (reason: ReportReason, description: string) => {
+            if (!session?.access_token) return;
+            try {
+              await reportAnchor(selectedAnchor.anchor_id, { reason, description: description || undefined }, session.access_token);
+              setIsReportModalVisible(false);
+              Alert.alert("Report submitted", "Thanks for helping keep Anchor safe.");
+            } catch (err) {
+              const message = err instanceof Error ? err.message : "Failed to submit report.";
+              Alert.alert("Couldn't submit report", message);
+            }
           }}
         />
       )}

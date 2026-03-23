@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Feather } from "@expo/vector-icons";
 import {
+  ActivityIndicator,
   Modal,
   Pressable,
   ScrollView,
@@ -37,7 +38,7 @@ type Props = {
   visible: boolean;
   anchorTitle: string;
   onClose: () => void;
-  onSubmit: (reason: ReportReason, description: string) => void;
+  onSubmit: (reason: ReportReason, description: string) => Promise<void>;
 };
 
 export default function ReportAnchorModal({ visible, anchorTitle, onClose, onSubmit }: Props) {
@@ -45,16 +46,25 @@ export default function ReportAnchorModal({ visible, anchorTitle, onClose, onSub
 
   const [selectedReason, setSelectedReason] = useState<ReportReason | null>(null);
   const [description, setDescription] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   function handleClose() {
+    if (isSubmitting) return;
     setSelectedReason(null);
     setDescription("");
     onClose();
   }
 
-  function handleSubmit() {
-    if (!selectedReason) return;
-    onSubmit(selectedReason, description.trim());
+  async function handleSubmit() {
+    if (!selectedReason || isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      await onSubmit(selectedReason, description.trim());
+      setSelectedReason(null);
+      setDescription("");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -118,12 +128,15 @@ export default function ReportAnchorModal({ visible, anchorTitle, onClose, onSub
             />
 
             <TouchableOpacity
-              style={[styles.submitButton, !selectedReason && styles.submitButtonDisabled]}
+              style={[styles.submitButton, (!selectedReason || isSubmitting) && styles.submitButtonDisabled]}
               onPress={handleSubmit}
               activeOpacity={0.8}
-              disabled={!selectedReason}
+              disabled={!selectedReason || isSubmitting}
             >
-              <Text style={styles.submitButtonText}>Submit Report</Text>
+              {isSubmitting
+                ? <ActivityIndicator color="#ffffff" />
+                : <Text style={styles.submitButtonText}>Submit Report</Text>
+              }
             </TouchableOpacity>
           </ScrollView>
         </Pressable>
