@@ -812,14 +812,16 @@ export default function DiscoveryScreen() {
                   label: "Unlock Radius",
                   value: `${selectedAnchor.unlock_radius}m`,
                 },
-                {
-                  key: "unlocks",
-                  label: "Unlock Count",
-                  value:
-                    selectedAnchor.max_unlock === null
-                      ? `${selectedAnchor.current_unlock}`
-                      : `${selectedAnchor.current_unlock} / ${selectedAnchor.max_unlock}`,
-                },
+                ...(selectedAnchor.creator_id === session?.user_id
+                  ? [{
+                      key: "unlocks",
+                      label: "Unlock Count",
+                      value:
+                        selectedAnchor.max_unlock === null
+                          ? `${selectedAnchor.current_unlock}`
+                          : `${selectedAnchor.current_unlock} / ${selectedAnchor.max_unlock}`,
+                    }]
+                  : []),
                 {
                   key: "activation",
                   label: "Activation",
