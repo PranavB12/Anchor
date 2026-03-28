@@ -187,7 +187,7 @@ export default function MapScreen() {
           <Slider
             style={styles.slider}
             minimumValue={10}
-            maximumValue={200}
+            maximumValue={100}
             step={1}
             value={radius}
             onValueChange={setRadius}
@@ -198,7 +198,7 @@ export default function MapScreen() {
 
           <View style={styles.sliderLabels}>
             <Text style={styles.sliderLabelText}>10m</Text>
-            <Text style={styles.sliderLabelText}>200m</Text>
+            <Text style={styles.sliderLabelText}>100m</Text>
           </View>
 
           <TouchableOpacity style={styles.nextButton} onPress={() => navigation.navigate('AnchorCreation', { latitude: anchorLocation[1], longitude: anchorLocation[0], radius })}>

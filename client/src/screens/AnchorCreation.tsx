@@ -268,7 +268,7 @@ export default function AnchorCreation({ navigation, route }: Props) {
       latitude,
       longitude,
       visibility: visibilityMap[visibility],
-      unlock_radius: Math.round(radius),
+      unlock_radius: Math.max(10, Math.min(100, Math.round(radius))),
       activation_time: finalActivationTime,
       expiration_time: alwaysActive ? null : (expiryTime ? expiryTime.toISOString() : null),
       always_active: alwaysActive,
