@@ -3,12 +3,13 @@ import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 
 import { useAuth } from "../context/AuthContext";
-import { NearbyAnchor } from "../services/anchorService";
+import { AnchorDraft, NearbyAnchor } from "../services/anchorService";
 import LoginScreen from "../screens/LoginScreen";
 import RegisterScreen from "../screens/RegisterScreen";
 import DiscoveryScreen from "../screens/DiscoveryScreen";
 import MapScreen from "../screens/MapScreen";
 import AnchorCreation from "../screens/AnchorCreation";
+import AnchorPreviewScreen from "../screens/AnchorPreviewScreen";
 import EditAnchor from "../screens/EditAnchor";
 import ForgotPasswordScreen from "../screens/ForgotPasswordScreen";
 import ResetPasswordScreen from "../screens/ResetPasswordScreen";
@@ -22,6 +23,7 @@ export type RootStackParamList = {
   Discovery: undefined;
   Map: undefined;
   AnchorCreation: { latitude: number; longitude: number; radius: number };
+  AnchorPreview: { draft: AnchorDraft };
   EditAnchor: { anchor: NearbyAnchor; radius: number };
   EditProfile: undefined;
 };
@@ -71,6 +73,7 @@ export default function AppNavigator() {
             <Stack.Screen name="Discovery" component={DiscoveryScreen} options={{ title: "Discover" }} />
             <Stack.Screen name="Map" component={MapScreen} options={{ title: "Anchor Map" }} />
             <Stack.Screen name="AnchorCreation" component={AnchorCreation} options={{ title: "Anchor Details" }} />
+            <Stack.Screen name="AnchorPreview" component={AnchorPreviewScreen} options={{ title: "Preview Anchor" }} />
             <Stack.Screen name="EditProfile" component={EditProfileScreen} options={{ title: "Edit Profile" }} />
             <Stack.Screen
               name="EditAnchor"
