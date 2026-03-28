@@ -11,7 +11,6 @@ import {
   View,
   Modal,
   Pressable,
-  Animated,
   Alert,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
@@ -19,14 +18,12 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../navigation/AppNavigator";
 import DateTimePicker, {
   DateTimePickerAndroid,
-  DateTimePickerEvent
 } from "@react-native-community/datetimepicker";
 type Props = NativeStackScreenProps<RootStackParamList, "AnchorCreation">;
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { apiRequest } from "../services/api";
 import { useAuth } from "../context/AuthContext";
-import { CreateAnchorBody } from "../services/anchorService";
-import * as DocumentPicker from 'expo-document-picker';
+import { AnchorDraft } from "../services/anchorService";
+import * as DocumentPicker from "expo-document-picker";
 
 
 // Dummy circle. TODO: CHANGE THEM LATER TO GET FROM BACKEND!!!
@@ -49,7 +46,6 @@ export default function AnchorCreation({ navigation, route }: Props) {
   const [content, setContent] = useState("");
   const [visibility, setVisibility] = useState<"Public" | "Circle" | "Private">("Public");
   const [maxUnlock, setMaxUnlock] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Date Entry
   const [startTime, setStartTime] = useState<Date | null>(null);
@@ -242,29 +238,32 @@ export default function AnchorCreation({ navigation, route }: Props) {
     if (tagInput.trim()) addTag(tagInput);
   };
 
-
-  // Submitting logic
-  const handleDropAnchor = async () => {
+  const buildDraft = (): AnchorDraft | null => {
     if (!validateDates(expiryTime, alwaysActive)) {
-      return;
+      return null;
     }
     if (!title.trim()) {
       Alert.alert("Missing Title", "Please give your anchor a name.");
-      return;
+      return null;
     }
     if (!session?.access_token) {
       Alert.alert("Not Logged In", "Please log in to create an anchor.");
-      return;
+      return null;
     }
 
     const visibilityMap = { Public: "PUBLIC", Circle: "CIRCLE_ONLY", Private: "PRIVATE" } as const;
+    const parsedMaxUnlock = maxUnlock.trim() ? parseInt(maxUnlock, 10) : null;
 
     const now = new Date();
-    const finalActivationTime = startTime 
-      ? (startTime < now ? now.toISOString() : startTime.toISOString()) 
-      : undefined;
+    if (Number.isNaN(parsedMaxUnlock)) {
+      Alert.alert("Invalid Unlock Limit", "Please enter a valid unlock limit.");
+      return null;
+    }
 
-    const body: CreateAnchorBody = {
+    const finalActivationTime =
+      startTime && startTime >= now ? startTime.toISOString() : now.toISOString();
+
+    return {
       title: title.trim(),
       latitude,
       longitude,
@@ -274,40 +273,18 @@ export default function AnchorCreation({ navigation, route }: Props) {
       expiration_time: alwaysActive ? null : (expiryTime ? expiryTime.toISOString() : null),
       always_active: alwaysActive,
       description: content.trim() || null,
-      max_unlock: maxUnlock.trim() ? parseInt(maxUnlock, 10) : null,
-      tags: tags
+      max_unlock: parsedMaxUnlock,
+      tags,
     };
-    setIsSubmitting(true);
-    try {
-      const createdAnchor = await apiRequest<{ anchor_id: string }>("/anchors/", {
-        method: "POST",
-        body,
-        token: session.access_token,
-      });
-      
-      if (contentType === "file" && selectedFile && createdAnchor?.anchor_id) {
-        try {
-          // Requires mock or real uploadAnchorAttachment API implementation
-          const { uploadAnchorAttachment } = require('../services/anchorService');
-          await uploadAnchorAttachment(
-            createdAnchor.anchor_id,
-            session.user_id,
-            selectedFile.uri,
-            selectedFile.name,
-            selectedFile.type,
-            session.access_token
-          );
-        } catch (e: any) {
-          Alert.alert("Attachment Error", "Anchor created but attachment failed: " + e.message);
-        }
-      }
+  };
 
-      navigation.navigate("Discovery");
-    } catch (err: any) {
-      Alert.alert("Error", err.message || "Failed to create anchor.");
-    } finally {
-      setIsSubmitting(false);
+  const handlePreviewAnchor = () => {
+    const draft = buildDraft();
+    if (!draft) {
+      return;
     }
+
+    navigation.navigate("AnchorPreview", { draft });
   };
 
   // content
@@ -658,12 +635,10 @@ export default function AnchorCreation({ navigation, route }: Props) {
         <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, Platform.OS === "ios" ? 34 : 24) }]}>
           <TouchableOpacity
             style={[styles.submitButton, !!dateError && styles.submitButtonDisabled]}
-            onPress={handleDropAnchor}
+            onPress={handlePreviewAnchor}
             activeOpacity={0.8}
           >
-            <Text style={styles.submitButtonText}>
-              {isSubmitting ? "Dropping…" : "Drop Anchor"}
-            </Text>
+            <Text style={styles.submitButtonText}>Preview Anchor</Text>
           </TouchableOpacity>
         </View>
 
