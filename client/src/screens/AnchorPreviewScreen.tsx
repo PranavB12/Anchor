@@ -1,6 +1,7 @@
 import React from "react";
 import {
   Alert,
+  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -8,8 +9,10 @@ import {
   View,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
+import Mapbox from "@rnmapbox/maps";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import circle from "@turf/circle";
 
 import type { RootStackParamList } from "../navigation/AppNavigator";
 import { useAuth } from "../context/AuthContext";
@@ -27,6 +30,9 @@ const colors = {
   border: "#f2d9bf",
   white: "#ffffff",
 };
+
+const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN;
+Mapbox.setAccessToken(MAPBOX_TOKEN ?? "");
 
 function formatVisibility(visibility: Props["route"]["params"]["draft"]["visibility"]) {
   if (visibility === "PUBLIC") return "Public";
@@ -47,6 +53,14 @@ function formatDateTime(value: string | null) {
   });
 }
 
+function getPreviewZoom(radius: number) {
+  if (radius <= 20) return 16.5;
+  if (radius <= 40) return 16;
+  if (radius <= 60) return 15.5;
+  if (radius <= 80) return 15;
+  return 14.5;
+}
+
 export default function AnchorPreviewScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
   const { session } = useAuth();
@@ -64,6 +78,8 @@ export default function AnchorPreviewScreen({ navigation, route }: Props) {
     { key: "activation", label: "Starts", value: formatDateTime(draft.activation_time) },
     { key: "expiration", label: "Ends", value: formatDateTime(draft.expiration_time) },
   ];
+  const coordinate: [number, number] = [draft.longitude, draft.latitude];
+  const radiusShape = circle(coordinate, draft.unlock_radius, { steps: 64, units: "meters" });
 
   const handlePublish = async () => {
     if (!session?.access_token) {
@@ -103,6 +119,41 @@ export default function AnchorPreviewScreen({ navigation, route }: Props) {
           <Text style={styles.heroSubtitle}>
             Review the details and map placement before you publish.
           </Text>
+        </View>
+
+        <View style={styles.mapCard}>
+          <View style={styles.mapCardHeader}>
+            <Text style={styles.mapCardTitle}>Map Preview</Text>
+            <Text style={styles.mapCardMeta}>{draft.unlock_radius}m radius</Text>
+          </View>
+          <View style={styles.mapFrame}>
+            <Mapbox.MapView style={styles.map} styleURL={Mapbox.StyleURL.Light}>
+              <Mapbox.Camera
+                zoomLevel={getPreviewZoom(draft.unlock_radius)}
+                centerCoordinate={coordinate}
+                animationDuration={0}
+              />
+              <Mapbox.ShapeSource id="preview-radius-source" shape={radiusShape}>
+                <Mapbox.FillLayer
+                  id="preview-radius-fill"
+                  style={{ fillColor: colors.accentPink, fillOpacity: 0.2 }}
+                />
+                <Mapbox.LineLayer
+                  id="preview-radius-line"
+                  style={{ lineColor: colors.accentPink, lineWidth: 1.5 }}
+                />
+              </Mapbox.ShapeSource>
+              <Mapbox.MarkerView id="preview-anchor-pin" coordinate={coordinate}>
+                <View style={styles.mapMarker}>
+                  <Image
+                    source={require("../../assets/unlocked.png")}
+                    style={styles.mapMarkerImage}
+                    resizeMode="contain"
+                  />
+                </View>
+              </Mapbox.MarkerView>
+            </Mapbox.MapView>
+          </View>
         </View>
 
         <View style={styles.summaryCard}>
@@ -226,6 +277,47 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: 24,
     padding: 20,
+  },
+  mapCard: {
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 24,
+    padding: 14,
+    gap: 12,
+  },
+  mapCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 6,
+  },
+  mapCardTitle: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  mapCardMeta: {
+    color: colors.accentPink,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  mapFrame: {
+    overflow: "hidden",
+    borderRadius: 20,
+    height: 220,
+    backgroundColor: "#f4efe7",
+  },
+  map: {
+    flex: 1,
+  },
+  mapMarker: {
+    width: 40,
+    height: 40,
+  },
+  mapMarkerImage: {
+    width: "100%",
+    height: "100%",
   },
   summaryHeader: {
     flexDirection: "row",
