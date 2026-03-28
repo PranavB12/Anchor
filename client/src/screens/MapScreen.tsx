@@ -95,10 +95,9 @@ export default function MapScreen() {
     if (!anchor.isOwn) return;
     Alert.alert("Your Anchor", undefined, [
       {
-        text: "Edit Anchor",
-        onPress: () => navigation.navigate("EditAnchor", { anchorId: anchor.id }),
-      },
-      { text: "Cancel", style: "cancel" },
+        text: "Close",
+        style: "cancel",
+      }
     ]);
   };
 
