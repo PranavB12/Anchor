@@ -1,5 +1,6 @@
 import React from "react";
 import {
+  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,6 +12,8 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import type { RootStackParamList } from "../navigation/AppNavigator";
+import { useAuth } from "../context/AuthContext";
+import { createAnchor } from "../services/anchorService";
 
 type Props = NativeStackScreenProps<RootStackParamList, "AnchorPreview">;
 
@@ -46,7 +49,9 @@ function formatDateTime(value: string | null) {
 
 export default function AnchorPreviewScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
+  const { session } = useAuth();
   const { draft } = route.params;
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
 
   const detailItems = [
     { key: "visibility", label: "Visibility", value: formatVisibility(draft.visibility) },
@@ -59,6 +64,26 @@ export default function AnchorPreviewScreen({ navigation, route }: Props) {
     { key: "activation", label: "Starts", value: formatDateTime(draft.activation_time) },
     { key: "expiration", label: "Ends", value: formatDateTime(draft.expiration_time) },
   ];
+
+  const handlePublish = async () => {
+    if (!session?.access_token) {
+      Alert.alert("Not Logged In", "Please log in to create an anchor.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await createAnchor(draft, session.access_token);
+      navigation.navigate("Discovery");
+    } catch (err) {
+      Alert.alert(
+        "Error",
+        err instanceof Error ? err.message : "Failed to create anchor.",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -138,11 +163,14 @@ export default function AnchorPreviewScreen({ navigation, route }: Props) {
           <Text style={styles.secondaryButtonText}>Edit Details</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={styles.primaryButtonDisabled}
-          disabled
+          style={[styles.primaryButton, isSubmitting && styles.primaryButtonDisabled]}
+          onPress={handlePublish}
+          disabled={isSubmitting}
           activeOpacity={0.8}
         >
-          <Text style={styles.primaryButtonText}>Publish Anchor</Text>
+          <Text style={styles.primaryButtonText}>
+            {isSubmitting ? "Publishing..." : "Publish Anchor"}
+          </Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -316,12 +344,16 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "700",
   },
-  primaryButtonDisabled: {
+  primaryButton: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 16,
     paddingVertical: 15,
+    backgroundColor: colors.accentPink,
+  },
+  primaryButtonDisabled: {
+    opacity: 0.7,
     backgroundColor: "#f3a3b5",
   },
   primaryButtonText: {
