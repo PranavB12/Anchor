@@ -41,6 +41,7 @@ import {
   type AnchorAttachment,
 } from "../services/anchorService";
 import ReportAnchorModal from "../components/ReportAnchorModal";
+import { getDistanceFromLatLonInM } from "../utils/distance";
 import circle from "@turf/circle";
 import Slider from "@react-native-community/slider";
 import { getProfile } from "../services/authService";
@@ -52,6 +53,8 @@ type AnchorWithDerivedFields = NearbyAnchor & {
   lockLabel: string;
   visibilityLabel: string;
   primaryTag: string | null;
+  distanceMeters: number | null;
+  isWithinRadius: boolean;
 };
 
 const FALLBACK_CENTER: Coordinate = [-86.9081, 40.4237];
@@ -343,12 +346,20 @@ export default function DiscoveryScreen() {
         })
         .map<AnchorWithDerivedFields>((anchor) => {
           const lockMeta = getLockMeta(anchor);
+          const distanceMeters = userCoordinate
+            ? getDistanceFromLatLonInM(
+                userCoordinate[1], userCoordinate[0],
+                anchor.latitude, anchor.longitude,
+              )
+            : null;
           return {
             ...anchor,
             isUnlocked: lockMeta.isUnlocked,
             lockLabel: lockMeta.label,
             visibilityLabel: formatVisibility(anchor.visibility),
             primaryTag: anchor.tags?.[0] ?? null,
+            distanceMeters,
+            isWithinRadius: distanceMeters !== null && distanceMeters <= anchor.unlock_radius,
           };
         });
 
@@ -405,6 +416,25 @@ export default function DiscoveryScreen() {
       subscription?.remove();
     };
   }, [isGhostMode]);
+
+  // Recompute distance/isWithinRadius instantly when location updates,
+  // without waiting for a full API re-fetch.
+  useEffect(() => {
+    if (!userCoordinate) return;
+    setAnchors((prev) =>
+      prev.map((anchor) => {
+        const distanceMeters = getDistanceFromLatLonInM(
+          userCoordinate[1], userCoordinate[0],
+          anchor.latitude, anchor.longitude,
+        );
+        return {
+          ...anchor,
+          distanceMeters,
+          isWithinRadius: distanceMeters <= anchor.unlock_radius,
+        };
+      }),
+    );
+  }, [userCoordinate]);
 
   const topNearbyTags = useMemo(() => {
     const counts = new Map<string, number>();
