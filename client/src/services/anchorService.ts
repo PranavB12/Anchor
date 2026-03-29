@@ -39,6 +39,28 @@ export type CreateAnchorBody = {
   tags?: string[] | null;
 };
 
+export type AnchorDraft = {
+  title: string;
+  description: string | null;
+  latitude: number;
+  longitude: number;
+  visibility: AnchorVisibility;
+  unlock_radius: number;
+  max_unlock: number | null;
+  activation_time: string;
+  expiration_time: string | null;
+  always_active: boolean;
+  tags: string[];
+};
+
+export async function createAnchor(body: CreateAnchorBody, token: string) {
+  return apiRequest<NearbyAnchor>("/anchors/", {
+    method: "POST",
+    token,
+    body,
+  });
+}
+
 type GetNearbyAnchorsParams = {
   lat: number;
   lon: number;
