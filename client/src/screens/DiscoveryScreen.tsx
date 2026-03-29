@@ -31,11 +31,17 @@ import * as DocumentPicker from 'expo-document-picker';
 import { useAuth } from "../context/AuthContext";
 import type { RootStackParamList } from "../navigation/AppNavigator";
 import {
+  getNearbyAnchorFilterOptions,
   getNearbyAnchors,
   reportAnchor,
   unlockAnchor,
   getAnchorAttachments,
   uploadAnchorAttachment,
+  type AnchorContentType,
+  type AnchorFilterOption,
+  type AnchorStatus,
+  type AnchorVisibility,
+  type NearbyAnchorFilterOptions,
   type NearbyAnchor,
   type ReportReason,
   type AnchorAttachment,
@@ -52,6 +58,19 @@ type AnchorWithDerivedFields = NearbyAnchor & {
   lockLabel: string;
   visibilityLabel: string;
   primaryTag: string | null;
+};
+
+type DiscoveryFilterMenu = "tags" | "visibility" | "status" | "contentType";
+
+type FilterConfig = {
+  menu: DiscoveryFilterMenu;
+  label: string;
+  title: string;
+  icon: keyof typeof Feather.glyphMap;
+  selectedValues: string[];
+  draftValues: string[];
+  options: AnchorFilterOption[];
+  renderValue: (value: string) => string;
 };
 
 const FALLBACK_CENTER: Coordinate = [-86.9081, 40.4237];
@@ -103,10 +122,29 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
+function toggleSelection<T extends string>(previous: T[], value: T) {
+  return previous.includes(value)
+    ? previous.filter((item) => item !== value)
+    : [...previous, value];
+}
+
 function formatVisibility(value: NearbyAnchor["visibility"]) {
   if (value === "CIRCLE_ONLY") return "Circle";
   if (value === "PRIVATE") return "Private";
   return "Public";
+}
+
+function formatStatus(value: AnchorStatus) {
+  if (value === "ACTIVE") return "Active";
+  if (value === "EXPIRED") return "Expired";
+  if (value === "LOCKED") return "Locked";
+  return "Flagged";
+}
+
+function formatContentType(value: AnchorContentType) {
+  if (value === "TEXT") return "Text";
+  if (value === "FILE") return "File";
+  return "Link";
 }
 
 function getLockMeta(anchor: NearbyAnchor) {
@@ -206,7 +244,19 @@ export default function DiscoveryScreen() {
   const [anchors, setAnchors] = useState<AnchorWithDerivedFields[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [draftSelectedTags, setDraftSelectedTags] = useState<string[]>([]);
-  const [isTagFilterOpen, setIsTagFilterOpen] = useState(false);
+  const [selectedVisibility, setSelectedVisibility] = useState<AnchorVisibility[]>([]);
+  const [draftSelectedVisibility, setDraftSelectedVisibility] = useState<AnchorVisibility[]>([]);
+  const [selectedStatuses, setSelectedStatuses] = useState<AnchorStatus[]>([]);
+  const [draftSelectedStatuses, setDraftSelectedStatuses] = useState<AnchorStatus[]>([]);
+  const [selectedContentTypes, setSelectedContentTypes] = useState<AnchorContentType[]>([]);
+  const [draftSelectedContentTypes, setDraftSelectedContentTypes] = useState<AnchorContentType[]>([]);
+  const [openFilterMenu, setOpenFilterMenu] = useState<DiscoveryFilterMenu | null>(null);
+  const [filterOptions, setFilterOptions] = useState<NearbyAnchorFilterOptions>({
+    visibility: [],
+    anchor_status: [],
+    content_type: [],
+    tags: [],
+  });
   const [selectedAnchorId, setSelectedAnchorId] = useState<string | null>(null);
   const [isReportModalVisible, setIsReportModalVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -331,6 +381,10 @@ export default function DiscoveryScreen() {
           lat: center[1],
           lon: center[0],
           radiusKm: 1000,
+          visibility: selectedVisibility.length > 0 ? selectedVisibility : undefined,
+          anchorStatus: selectedStatuses.length > 0 ? selectedStatuses : undefined,
+          contentType: selectedContentTypes.length > 0 ? selectedContentTypes : undefined,
+          tags: selectedTags.length > 0 ? selectedTags : undefined,
           sortBy: "distance",
         },
         token,
@@ -360,11 +414,55 @@ export default function DiscoveryScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [session?.access_token, userCoordinate, isGhostMode]);
+  }, [
+    isGhostMode,
+    selectedContentTypes,
+    selectedStatuses,
+    selectedTags,
+    selectedVisibility,
+    session?.access_token,
+    userCoordinate,
+  ]);
+
+  const loadFilterOptions = useCallback(async () => {
+    const token = session?.access_token;
+    if (!token) return;
+    if (isGhostMode) return;
+
+    const center = userCoordinate ?? FALLBACK_CENTER;
+
+    try {
+      const response = await getNearbyAnchorFilterOptions(
+        {
+          lat: center[1],
+          lon: center[0],
+          radiusKm: 1000,
+        },
+        token,
+      );
+      setFilterOptions(response);
+    } catch {
+      setFilterOptions({
+        visibility: [],
+        anchor_status: [],
+        content_type: [],
+        tags: [],
+      });
+    }
+  }, [isGhostMode, session?.access_token, userCoordinate]);
+
+  const refreshDiscovery = useCallback(() => {
+    void loadFilterOptions();
+    void loadAnchors();
+  }, [loadAnchors, loadFilterOptions]);
 
   useEffect(() => {
     void loadAnchors();
   }, [loadAnchors]);
+
+  useEffect(() => {
+    void loadFilterOptions();
+  }, [loadFilterOptions]);
 
   useEffect(() => {
     const loadGhostMode = async () => {
@@ -406,75 +504,201 @@ export default function DiscoveryScreen() {
     };
   }, [isGhostMode]);
 
-  const topNearbyTags = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const anchor of anchors) {
-      for (const rawTag of anchor.tags ?? []) {
-        const normalized = rawTag.trim().toLowerCase();
-        if (!normalized) continue;
-        counts.set(normalized, (counts.get(normalized) ?? 0) + 1);
-      }
-    }
-
-    return Array.from(counts.entries())
-      .sort((a, b) => {
-        if (b[1] !== a[1]) return b[1] - a[1];
-        return a[0].localeCompare(b[0]);
-      })
-      .slice(0, 10)
-      .map(([tag, count]) => ({ tag, count }));
-  }, [anchors]);
+  const topNearbyTags = filterOptions.tags;
 
   const hasActiveTagFilter = selectedTags.length > 0;
+  const hasActiveVisibilityFilter = selectedVisibility.length > 0;
+  const hasActiveStatusFilter = selectedStatuses.length > 0;
+  const hasActiveContentTypeFilter = selectedContentTypes.length > 0;
+  const hasAnyServerFilter =
+    hasActiveTagFilter ||
+    hasActiveVisibilityFilter ||
+    hasActiveStatusFilter ||
+    hasActiveContentTypeFilter;
 
-  const openTagFilter = useCallback(() => {
-    setDraftSelectedTags(selectedTags);
-    setIsTagFilterOpen(true);
-  }, [selectedTags]);
+  const openFilter = useCallback(
+    (menu: DiscoveryFilterMenu) => {
+      if (openFilterMenu === menu) {
+        setOpenFilterMenu(null);
+        return;
+      }
 
-  const closeTagFilter = useCallback(() => {
-    setDraftSelectedTags(selectedTags);
-    setIsTagFilterOpen(false);
-  }, [selectedTags]);
+      if (menu === "tags") {
+        setDraftSelectedTags(selectedTags);
+      } else if (menu === "visibility") {
+        setDraftSelectedVisibility(selectedVisibility);
+      } else if (menu === "status") {
+        setDraftSelectedStatuses(selectedStatuses);
+      } else {
+        setDraftSelectedContentTypes(selectedContentTypes);
+      }
 
-  const toggleDraftTag = useCallback((tag: string) => {
-    setDraftSelectedTags((previous) =>
-      previous.includes(tag)
-        ? previous.filter((item) => item !== tag)
-        : [...previous, tag],
-    );
-  }, []);
+      setOpenFilterMenu(menu);
+    },
+    [
+      openFilterMenu,
+      selectedContentTypes,
+      selectedStatuses,
+      selectedTags,
+      selectedVisibility,
+    ],
+  );
 
-  const applyTagFilter = useCallback(() => {
-    setSelectedTags(draftSelectedTags);
-    setIsTagFilterOpen(false);
-  }, [draftSelectedTags]);
+  const closeFilterMenu = useCallback(() => {
+    if (openFilterMenu === "tags") {
+      setDraftSelectedTags(selectedTags);
+    } else if (openFilterMenu === "visibility") {
+      setDraftSelectedVisibility(selectedVisibility);
+    } else if (openFilterMenu === "status") {
+      setDraftSelectedStatuses(selectedStatuses);
+    } else if (openFilterMenu === "contentType") {
+      setDraftSelectedContentTypes(selectedContentTypes);
+    }
 
-  const clearTagFilter = useCallback(() => {
-    setSelectedTags([]);
-    setDraftSelectedTags([]);
-    setIsTagFilterOpen(false);
-  }, []);
+    setOpenFilterMenu(null);
+  }, [
+    openFilterMenu,
+    selectedContentTypes,
+    selectedStatuses,
+    selectedTags,
+    selectedVisibility,
+  ]);
 
-  const filteredAnchors = useMemo(() => {
+  const toggleDraftFilterValue = useCallback(
+    (menu: DiscoveryFilterMenu, value: string) => {
+      if (menu === "tags") {
+        setDraftSelectedTags((previous) => toggleSelection(previous, value));
+      } else if (menu === "visibility") {
+        setDraftSelectedVisibility((previous) =>
+          toggleSelection(previous, value as AnchorVisibility),
+        );
+      } else if (menu === "status") {
+        setDraftSelectedStatuses((previous) =>
+          toggleSelection(previous, value as AnchorStatus),
+        );
+      } else {
+        setDraftSelectedContentTypes((previous) =>
+          toggleSelection(previous, value as AnchorContentType),
+        );
+      }
+    },
+    [],
+  );
+
+  const applyOpenFilterMenu = useCallback(() => {
+    if (openFilterMenu === "tags") {
+      setSelectedTags(draftSelectedTags);
+    } else if (openFilterMenu === "visibility") {
+      setSelectedVisibility(draftSelectedVisibility);
+    } else if (openFilterMenu === "status") {
+      setSelectedStatuses(draftSelectedStatuses);
+    } else if (openFilterMenu === "contentType") {
+      setSelectedContentTypes(draftSelectedContentTypes);
+    }
+
+    setOpenFilterMenu(null);
+  }, [
+    draftSelectedContentTypes,
+    draftSelectedStatuses,
+    draftSelectedTags,
+    draftSelectedVisibility,
+    openFilterMenu,
+  ]);
+
+  const clearFilter = useCallback(
+    (menu: DiscoveryFilterMenu) => {
+      if (menu === "tags") {
+        setSelectedTags([]);
+        setDraftSelectedTags([]);
+      } else if (menu === "visibility") {
+        setSelectedVisibility([]);
+        setDraftSelectedVisibility([]);
+      } else if (menu === "status") {
+        setSelectedStatuses([]);
+        setDraftSelectedStatuses([]);
+      } else {
+        setSelectedContentTypes([]);
+        setDraftSelectedContentTypes([]);
+      }
+
+      if (openFilterMenu === menu) {
+        setOpenFilterMenu(null);
+      }
+    },
+    [openFilterMenu],
+  );
+
+  const visibleAnchors = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
     return anchors.filter((anchor) => {
       const anchorTags = (anchor.tags ?? []).map((tag) => tag.toLowerCase());
       const joinedTags = anchorTags.join(" ");
+      const joinedContentTypes = (anchor.content_type ?? [])
+        .map((item) => formatContentType(item).toLowerCase())
+        .join(" ");
 
       const matchesSearch =
         !normalizedQuery ||
         anchor.title.toLowerCase().includes(normalizedQuery) ||
         anchor.visibilityLabel.toLowerCase().includes(normalizedQuery) ||
+        anchor.lockLabel.toLowerCase().includes(normalizedQuery) ||
+        joinedContentTypes.includes(normalizedQuery) ||
         joinedTags.includes(normalizedQuery);
-
-      const matchesTags =
-        selectedTags.length === 0 ||
-        selectedTags.some((selectedTag) => anchorTags.includes(selectedTag));
-
-      return matchesSearch && matchesTags;
+      return matchesSearch;
     });
-  }, [anchors, searchQuery, selectedTags]);
+  }, [anchors, searchQuery]);
+
+  useEffect(() => {
+    if (!selectedAnchorId) return;
+    if (anchors.some((anchor) => anchor.anchor_id === selectedAnchorId)) return;
+    setSelectedAnchorId(null);
+  }, [anchors, selectedAnchorId]);
+
+  const filterConfigs: FilterConfig[] = [
+    {
+      menu: "tags" as const,
+      label: "Tags",
+      title: "Filter by tags",
+      icon: "tag" as const,
+      selectedValues: selectedTags,
+      draftValues: draftSelectedTags,
+      options: topNearbyTags,
+      renderValue: (value: string) => `#${value}`,
+    },
+    {
+      menu: "visibility" as const,
+      label: "Visibility",
+      title: "Filter by visibility",
+      icon: "eye" as const,
+      selectedValues: selectedVisibility,
+      draftValues: draftSelectedVisibility,
+      options: filterOptions.visibility,
+      renderValue: (value: string) => formatVisibility(value as AnchorVisibility),
+    },
+    {
+      menu: "status" as const,
+      label: "Status",
+      title: "Filter by status",
+      icon: "sliders" as const,
+      selectedValues: selectedStatuses,
+      draftValues: draftSelectedStatuses,
+      options: filterOptions.anchor_status,
+      renderValue: (value: string) => formatStatus(value as AnchorStatus),
+    },
+    {
+      menu: "contentType" as const,
+      label: "Content",
+      title: "Filter by content type",
+      icon: "paperclip" as const,
+      selectedValues: selectedContentTypes,
+      draftValues: draftSelectedContentTypes,
+      options: filterOptions.content_type,
+      renderValue: (value: string) => formatContentType(value as AnchorContentType),
+    },
+  ];
+
+  const activeFilterConfig =
+    filterConfigs.find((config) => config.menu === openFilterMenu) ?? null;
 
   const selectedAnchor = useMemo(
     () => anchors.find((anchor) => anchor.anchor_id === selectedAnchorId) ?? null,
@@ -553,7 +777,7 @@ export default function DiscoveryScreen() {
           animationDuration={1000}
         />
 
-        {!anchorLocation && filteredAnchors.map((anchor) => {
+        {!anchorLocation && visibleAnchors.map((anchor) => {
           const isSelected = selectedAnchorId === anchor.anchor_id || editingAnchor?.anchor_id === anchor.anchor_id;
           return (
             <Mapbox.MarkerView
@@ -896,7 +1120,7 @@ export default function DiscoveryScreen() {
             <View style={styles.listHeader}>
               <Text style={styles.listTitle}>Nearby Anchors</Text>
               <View style={styles.listHeaderActions}>
-                <TouchableOpacity onPress={() => void loadAnchors()}>
+                <TouchableOpacity onPress={refreshDiscovery}>
                   <Feather name="refresh-cw" size={16} color={colors.muted} />
                 </TouchableOpacity>
                 <TouchableOpacity onPress={collapseSheet}>
@@ -906,67 +1130,75 @@ export default function DiscoveryScreen() {
             </View>
 
             <View style={styles.listFilterRow}>
-              <View
-                style={[
-                  styles.filterPillWrap,
-                  hasActiveTagFilter && styles.filterPillWrapActive,
-                ]}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.filterPillRowContent}
               >
-                <TouchableOpacity
-                  style={styles.filterPillMain}
-                  onPress={() => {
-                    if (isTagFilterOpen) {
-                      closeTagFilter();
-                      return;
-                    }
-                    openTagFilter();
-                  }}
-                  activeOpacity={0.85}
-                >
-                  <Feather
-                    name="tag"
-                    size={13}
-                    color={hasActiveTagFilter ? colors.accentPink : colors.muted}
-                  />
-                  <Text
-                    style={[
-                      styles.filterPillText,
-                      hasActiveTagFilter && styles.filterPillTextActive,
-                    ]}
-                  >
-                    Tags{hasActiveTagFilter ? ` (${selectedTags.length})` : ""}
-                  </Text>
-                  <Feather
-                    name={isTagFilterOpen ? "chevron-up" : "chevron-down"}
-                    size={14}
-                    color={hasActiveTagFilter ? colors.accentPink : colors.muted}
-                  />
-                </TouchableOpacity>
+                {filterConfigs.map((config) => {
+                  const isActive = config.selectedValues.length > 0;
+                  const isOpen = openFilterMenu === config.menu;
+                  return (
+                    <View
+                      key={config.menu}
+                      style={[
+                        styles.filterPillWrap,
+                        isActive && styles.filterPillWrapActive,
+                      ]}
+                    >
+                      <TouchableOpacity
+                        style={styles.filterPillMain}
+                        onPress={() => openFilter(config.menu)}
+                        activeOpacity={0.85}
+                      >
+                        <Feather
+                          name={config.icon}
+                          size={13}
+                          color={isActive ? colors.accentPink : colors.muted}
+                        />
+                        <Text
+                          style={[
+                            styles.filterPillText,
+                            isActive && styles.filterPillTextActive,
+                          ]}
+                        >
+                          {config.label}
+                          {isActive ? ` (${config.selectedValues.length})` : ""}
+                        </Text>
+                        <Feather
+                          name={isOpen ? "chevron-up" : "chevron-down"}
+                          size={14}
+                          color={isActive ? colors.accentPink : colors.muted}
+                        />
+                      </TouchableOpacity>
 
-                {hasActiveTagFilter ? (
-                  <TouchableOpacity
-                    style={styles.filterPillClear}
-                    onPress={clearTagFilter}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <Feather name="x" size={13} color={colors.accentPink} />
-                  </TouchableOpacity>
-                ) : null}
-              </View>
+                      {isActive ? (
+                        <TouchableOpacity
+                          style={styles.filterPillClear}
+                          onPress={() => clearFilter(config.menu)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Feather name="x" size={13} color={colors.accentPink} />
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                  );
+                })}
+              </ScrollView>
             </View>
 
-            {isTagFilterOpen ? (
+            {activeFilterConfig ? (
               <View style={styles.tagDropdown}>
                 <View style={styles.tagDropdownHeader}>
-                  <Text style={styles.tagDropdownTitle}>Filter by tags</Text>
+                  <Text style={styles.tagDropdownTitle}>{activeFilterConfig.title}</Text>
                   <Text style={styles.tagDropdownMeta}>
-                    {draftSelectedTags.length} selected
+                    {activeFilterConfig.draftValues.length} selected
                   </Text>
                 </View>
 
-                {topNearbyTags.length === 0 ? (
+                {activeFilterConfig.options.length === 0 ? (
                   <Text style={styles.tagDropdownEmpty}>
-                    No nearby tags to filter yet.
+                    No nearby options available yet.
                   </Text>
                 ) : (
                   <ScrollView
@@ -975,16 +1207,16 @@ export default function DiscoveryScreen() {
                     nestedScrollEnabled
                     showsVerticalScrollIndicator={false}
                   >
-                    {topNearbyTags.map(({ tag, count }) => {
-                      const isChecked = draftSelectedTags.includes(tag);
+                    {activeFilterConfig.options.map(({ value, count }: AnchorFilterOption) => {
+                      const isChecked = activeFilterConfig.draftValues.includes(value);
                       return (
                         <Pressable
-                          key={tag}
+                          key={value}
                           style={[
                             styles.tagOptionRow,
                             isChecked && styles.tagOptionRowChecked,
                           ]}
-                          onPress={() => toggleDraftTag(tag)}
+                          onPress={() => toggleDraftFilterValue(activeFilterConfig.menu, value)}
                         >
                           <Feather
                             name={isChecked ? "check-square" : "square"}
@@ -997,7 +1229,7 @@ export default function DiscoveryScreen() {
                               isChecked && styles.tagOptionTextChecked,
                             ]}
                           >
-                            #{tag}
+                            {activeFilterConfig.renderValue(value)}
                           </Text>
                           <Text style={styles.tagOptionCount}>{count}</Text>
                         </Pressable>
@@ -1009,7 +1241,7 @@ export default function DiscoveryScreen() {
                 <View style={styles.tagDropdownActions}>
                   <TouchableOpacity
                     style={styles.tagDropdownSecondaryButton}
-                    onPress={closeTagFilter}
+                    onPress={closeFilterMenu}
                   >
                     <Text style={styles.tagDropdownSecondaryButtonText}>
                       Cancel
@@ -1017,7 +1249,7 @@ export default function DiscoveryScreen() {
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.tagDropdownPrimaryButton}
-                    onPress={applyTagFilter}
+                    onPress={applyOpenFilterMenu}
                   >
                     <Text style={styles.tagDropdownPrimaryButtonText}>
                       Confirm
@@ -1038,7 +1270,7 @@ export default function DiscoveryScreen() {
               </View>
             ) : (
               <FlatList
-                data={filteredAnchors}
+                data={visibleAnchors}
                 keyExtractor={(item) => item.anchor_id}
                 renderItem={({ item }) => (
                   <AnchorRowCard
@@ -1055,8 +1287,8 @@ export default function DiscoveryScreen() {
                 scrollEventThrottle={16}
                 ListEmptyComponent={
                   <Text style={styles.emptyStateText}>
-                    {hasActiveTagFilter
-                      ? "No anchors match your selected tags."
+                    {hasAnyServerFilter
+                      ? "No anchors match your selected filters."
                       : "No anchors found."}
                   </Text>
                 }
@@ -1073,7 +1305,7 @@ export default function DiscoveryScreen() {
             <Text style={styles.collapsedSubtitle}>
               {isLoading
                 ? "Loading anchors..."
-                : `${filteredAnchors.length} anchors found`}
+                : `${visibleAnchors.length} anchors found`}
             </Text>
             <Feather name="chevrons-up" size={16} color={colors.muted} />
           </TouchableOpacity>
@@ -1244,6 +1476,10 @@ const styles = StyleSheet.create({
   listFilterRow: {
     paddingHorizontal: 18,
     paddingBottom: 10,
+  },
+  filterPillRowContent: {
+    gap: 10,
+    paddingRight: 18,
   },
   filterPillWrap: {
     alignSelf: "flex-start",
