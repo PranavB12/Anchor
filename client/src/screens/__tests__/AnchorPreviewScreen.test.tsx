@@ -122,6 +122,7 @@ beforeEach(() => {
     activation_time: draft.activation_time,
     expiration_time: draft.expiration_time,
     always_active: draft.always_active,
+    content_type: null,
     tags: draft.tags,
   });
 });
