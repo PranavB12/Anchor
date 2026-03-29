@@ -25,13 +25,20 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
+
 import { useAuth } from "../context/AuthContext";
 import type { RootStackParamList } from "../navigation/AppNavigator";
 import {
   getNearbyAnchors,
   reportAnchor,
+  unlockAnchor,
+  getAnchorAttachments,
+  uploadAnchorAttachment,
   type NearbyAnchor,
   type ReportReason,
+  type AnchorAttachment,
 } from "../services/anchorService";
 import ReportAnchorModal from "../components/ReportAnchorModal";
 import circle from "@turf/circle";
@@ -107,6 +114,13 @@ function getLockMeta(anchor: NearbyAnchor) {
     return {
       isUnlocked: false,
       label: anchor.status,
+    };
+  }
+
+  if (!anchor.is_unlocked) {
+    return {
+      isUnlocked: false,
+      label: "Locked",
     };
   }
 
@@ -205,6 +219,8 @@ export default function DiscoveryScreen() {
 
   const [isGhostMode, setIsGhostMode] = useState(false);
 
+
+
   const collapsedHeight = 116;
   const expandedHeight = Math.min(windowHeight * 0.72, windowHeight - 128);
   const collapseOffset = Math.max(expandedHeight - collapsedHeight, 0);
@@ -213,7 +229,6 @@ export default function DiscoveryScreen() {
   const currentTranslateY = useRef(collapseOffset);
   const panStartOffset = useRef(collapseOffset);
   const listScrollOffset = useRef(0);
-  // NEW: ref to programmatically control the map camera
   const cameraRef = useRef<Mapbox.Camera>(null);
 
   useEffect(() => {
@@ -247,10 +262,13 @@ export default function DiscoveryScreen() {
     [collapseOffset, sheetTranslateY],
   );
 
-  useEffect(() => {
-    sheetTranslateY.setValue(isExpanded ? 0 : collapseOffset);
-    currentTranslateY.current = isExpanded ? 0 : collapseOffset;
-  }, [collapseOffset, isExpanded, sheetTranslateY]);
+  // The broken useEffect was removed from here.
+  const collapseSheet = useCallback(() => {
+    Keyboard.dismiss();
+    listScrollOffset.current = 0;
+    setSelectedAnchorId(null);
+    animateSheet(false);
+  }, [animateSheet]);
 
   const panResponder = useMemo(
     () =>
@@ -259,13 +277,13 @@ export default function DiscoveryScreen() {
         onMoveShouldSetPanResponder: (_event, gesture) => {
           if (Math.abs(gesture.dy) < 5) return false;
           if (!isExpanded) return true;
-          if (gesture.dy > 0) return true;
+          if (gesture.dy > 0) return listScrollOffset.current <= 0;
           return currentTranslateY.current > 0;
         },
         onMoveShouldSetPanResponderCapture: (_event, gesture) => {
           if (Math.abs(gesture.dy) < 5) return false;
           if (!isExpanded) return true;
-          if (gesture.dy > 0) return true;
+          if (gesture.dy > 0) return listScrollOffset.current <= 0;
           return currentTranslateY.current > 0;
         },
         onPanResponderGrant: () => {
@@ -286,10 +304,14 @@ export default function DiscoveryScreen() {
           } else if (gesture.vy >= 0.2) {
             shouldExpand = false;
           }
-          animateSheet(shouldExpand);
+          if (!shouldExpand && selectedAnchorId) {
+            collapseSheet();
+          } else {
+            animateSheet(shouldExpand);
+          }
         },
       }),
-    [animateSheet, collapseOffset, isExpanded, sheetTranslateY],
+    [animateSheet, collapseOffset, isExpanded, sheetTranslateY, selectedAnchorId, collapseSheet],
   );
 
   const loadAnchors = useCallback(async () => {
@@ -364,13 +386,12 @@ export default function DiscoveryScreen() {
     const startWatching = async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
-        // Permission denied — map will fall back to FALLBACK_CENTER
         return;
       }
       subscription = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.Balanced,
-          distanceInterval: 10, // update every 10 meters of movement
+          distanceInterval: 10,
         },
         (location) => {
           setUserCoordinate([location.coords.longitude, location.coords.latitude]);
@@ -460,7 +481,6 @@ export default function DiscoveryScreen() {
     [anchors, selectedAnchorId],
   );
 
-  // NEW: pan map to anchor and highlight it when a row is tapped
   const openAnchorDetails = useCallback(
     (anchorId: string) => {
       listScrollOffset.current = 0;
@@ -483,14 +503,6 @@ export default function DiscoveryScreen() {
     listScrollOffset.current = 0;
     setSelectedAnchorId(null);
   }, []);
-
-
-  const collapseSheet = useCallback(() => {
-    Keyboard.dismiss();
-    listScrollOffset.current = 0;
-    setSelectedAnchorId(null);
-    animateSheet(false);
-  }, [animateSheet]);
 
   const handleDropAnchor = async () => {
     let { status } = await Location.requestForegroundPermissionsAsync();
@@ -525,18 +537,7 @@ export default function DiscoveryScreen() {
   }, [anchorLocation, editingAnchor, radius]);
 
   const handleAnchorPress = (anchor: typeof anchors[0]) => {
-    if (anchor.creator_id !== session?.user_id) return;
-    Alert.alert("Your Anchor", undefined, [
-      {
-        text: "Edit Anchor",
-        onPress: () => {
-          setEditingAnchor(anchor);
-          setRadius(anchor.unlock_radius);
-          animateSheet(true);
-        },
-      },
-      { text: "Cancel", style: "cancel" },
-    ]);
+    openAnchorDetails(anchor.anchor_id);
   };
 
 
@@ -545,7 +546,6 @@ export default function DiscoveryScreen() {
   return (
     <View style={styles.screen}>
       <Mapbox.MapView style={styles.map} styleURL={Mapbox.StyleURL.Light}>
-        {/* NEW: ref added to allow programmatic camera control */}
         <Mapbox.Camera
           ref={cameraRef}
           zoomLevel={14}
@@ -554,7 +554,6 @@ export default function DiscoveryScreen() {
         />
 
         {!anchorLocation && filteredAnchors.map((anchor) => {
-          // NEW: check if this marker is the selected one
           const isSelected = selectedAnchorId === anchor.anchor_id || editingAnchor?.anchor_id === anchor.anchor_id;
           return (
             <Mapbox.MarkerView
@@ -566,13 +565,11 @@ export default function DiscoveryScreen() {
                 onPress={() => handleAnchorPress(anchor)}
                 style={[
                   styles.mapMarker,
-                  // NEW: apply highlight style when selected
                   isSelected && styles.mapMarkerSelected,
                 ]}
               >
                 <View style={[
                   styles.markerWrapper,
-                  // NEW: grow the wrapper when selected
                   isSelected && styles.markerWrapperSelected,
                 ]}>
                   <Image
@@ -788,93 +785,100 @@ export default function DiscoveryScreen() {
               </TouchableOpacity>
             </View>
 
-            <FlatList
-              data={[
-                { key: "title", label: "Title", value: selectedAnchor.title },
-                {
-                  key: "description",
-                  label: "Description",
-                  value: selectedAnchor.description || "No description",
-                },
-                {
-                  key: "distance",
-                  label: "Distance",
-                  value: "- km",
-                },
-                { key: "status", label: "State", value: selectedAnchor.lockLabel },
-                {
-                  key: "visibility",
-                  label: "Visibility",
-                  value: selectedAnchor.visibilityLabel,
-                },
-                {
-                  key: "radius",
-                  label: "Unlock Radius",
-                  value: `${selectedAnchor.unlock_radius}m`,
-                },
-                ...(selectedAnchor.creator_id === session?.user_id
-                  ? [{
-                      key: "unlocks",
-                      label: "Unlock Count",
-                      value:
-                        selectedAnchor.max_unlock === null
-                          ? `${selectedAnchor.current_unlock}`
-                          : `${selectedAnchor.current_unlock} / ${selectedAnchor.max_unlock}`,
-                    }]
-                  : []),
-                {
-                  key: "activation",
-                  label: "Activation",
-                  value: formatDateTime(selectedAnchor.activation_time),
-                },
-                {
-                  key: "expiration",
-                  label: "Expiration",
-                  value: formatDateTime(selectedAnchor.expiration_time),
-                },
-              ]}
-              keyExtractor={(item) => item.key}
-              renderItem={({ item }) => (
-                <View style={styles.detailItem}>
-                  <Text style={styles.detailLabel}>{item.label}</Text>
-                  <Text style={styles.detailValue}>{item.value}</Text>
+            <ScrollView contentContainerStyle={styles.detailScrollContent} showsVerticalScrollIndicator={false}>
+              
+              <View style={styles.detailTopSection}>
+                <View style={[styles.detailStatusRow, selectedAnchor.isUnlocked ? styles.detailStatusRowUnlocked : styles.detailStatusRowLocked]}>
+                  <Feather name={selectedAnchor.isUnlocked ? "unlock" : "lock"} size={12} color={selectedAnchor.isUnlocked ? colors.success : colors.accentPink} />
+                  <Text
+                    style={[
+                      styles.detailStatusText,
+                      selectedAnchor.isUnlocked
+                        ? styles.detailStatusTextUnlocked
+                        : styles.detailStatusTextLocked,
+                    ]}
+                  >
+                    {selectedAnchor.lockLabel}
+                  </Text>
                 </View>
-              )}
-              ListHeaderComponent={
-                <View style={styles.detailTopSection}>
-                  <View style={styles.detailStatusRow}>
-                    <Image
-                      source={selectedAnchor.isUnlocked ? require('../../assets/unlocked.png') : require('../../assets/locked_p2.png')}
-                      style={{ width: 16, height: 16 }}
-                    />
-                    <Text
-                      style={[
-                        styles.detailStatusText,
-                        selectedAnchor.isUnlocked
-                          ? styles.detailStatusTextUnlocked
-                          : styles.detailStatusTextLocked,
-                      ]}
-                    >
-                      {selectedAnchor.lockLabel}
-                    </Text>
-                  </View>
-                  <View style={styles.detailTagRow}>
-                    {(selectedAnchor.tags ?? []).map((tag) => (
-                      <View key={tag} style={styles.detailTagPill}>
-                        <Text style={styles.detailTagText}>{tag}</Text>
-                      </View>
-                    ))}
-                  </View>
+                <Text style={styles.detailMainTitle}>{selectedAnchor.title}</Text>
+                <Text style={styles.detailCreatorText}>Created by User {selectedAnchor.creator_id.substring(0, 5)}</Text>
+                {selectedAnchor.description ? <Text style={styles.detailMainDesc}>{selectedAnchor.description}</Text> : null}
+
+                <View style={styles.detailTagRow}>
+                  {(selectedAnchor.tags ?? []).map((tag) => (
+                    <View key={tag} style={styles.detailTagPill}>
+                      <Text style={styles.detailTagText}>#{tag}</Text>
+                    </View>
+                  ))}
                 </View>
-              }
-              contentContainerStyle={styles.detailListContent}
-              showsVerticalScrollIndicator={false}
-              onScroll={(event) => {
-                listScrollOffset.current = event.nativeEvent.contentOffset.y;
-              }}
-              scrollEventThrottle={16}
-              ListFooterComponent={
-                selectedAnchor.creator_id !== session?.user_id ? (
+              </View>
+
+              <View style={styles.detailInfoGrid}>
+                <View style={styles.detailInfoItem}>
+                   <View style={styles.detailInfoIconSection}>
+                     <Feather name="eye" size={16} color={colors.accentPink} />
+                   </View>
+                   <View style={styles.detailInfoTextSection}>
+                     <Text style={styles.detailInfoLabel}>Visibility</Text>
+                     <Text style={styles.detailInfoValue}>{selectedAnchor.visibilityLabel}</Text>
+                   </View>
+                </View>
+                <View style={styles.detailInfoItem}>
+                   <View style={styles.detailInfoIconSection}>
+                     <Feather name="crosshair" size={16} color={colors.accentPink} />
+                   </View>
+                   <View style={styles.detailInfoTextSection}>
+                     <Text style={styles.detailInfoLabel}>Unlock Radius</Text>
+                     <Text style={styles.detailInfoValue}>{selectedAnchor.unlock_radius}m</Text>
+                   </View>
+                </View>
+                {selectedAnchor.creator_id === session?.user_id && (
+                  <View style={styles.detailInfoItem}>
+                     <View style={styles.detailInfoIconSection}>
+                       <Feather name="unlock" size={16} color={colors.accentPink} />
+                     </View>
+                     <View style={styles.detailInfoTextSection}>
+                       <Text style={styles.detailInfoLabel}>Unlocks</Text>
+                       <Text style={styles.detailInfoValue}>{selectedAnchor.max_unlock === null ? `${selectedAnchor.current_unlock}` : `${selectedAnchor.current_unlock} / ${selectedAnchor.max_unlock}`}</Text>
+                     </View>
+                  </View>
+                )}
+                <View style={styles.detailInfoItem}>
+                   <View style={styles.detailInfoIconSection}>
+                     <Feather name="clock" size={16} color={colors.accentPink} />
+                   </View>
+                   <View style={styles.detailInfoTextSection}>
+                     <Text style={styles.detailInfoLabel}>Activated</Text>
+                     <Text style={styles.detailInfoValue}>{formatDateTime(selectedAnchor.activation_time)}</Text>
+                   </View>
+                </View>
+                <View style={styles.detailInfoItem}>
+                   <View style={styles.detailInfoIconSection}>
+                     <Feather name="calendar" size={16} color={colors.accentPink} />
+                   </View>
+                   <View style={styles.detailInfoTextSection}>
+                     <Text style={styles.detailInfoLabel}>Expires</Text>
+                     <Text style={styles.detailInfoValue}>{formatDateTime(selectedAnchor.expiration_time)}</Text>
+                   </View>
+                </View>
+              </View>
+
+              <View style={styles.detailActionRow}>
+                {selectedAnchor.creator_id === session?.user_id ? (
+                  <TouchableOpacity
+                    style={styles.editButton}
+                    onPress={() => {
+                      setEditingAnchor(selectedAnchor);
+                      setRadius(selectedAnchor.unlock_radius);
+                      animateSheet(true);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Feather name="edit-2" size={14} color={colors.white} />
+                    <Text style={styles.editButtonText}>Edit Anchor</Text>
+                  </TouchableOpacity>
+                ) : (
                   <TouchableOpacity
                     style={styles.reportButton}
                     onPress={() => setIsReportModalVisible(true)}
@@ -883,9 +887,9 @@ export default function DiscoveryScreen() {
                     <Feather name="flag" size={14} color={colors.muted} />
                     <Text style={styles.reportButtonText}>Report Anchor</Text>
                   </TouchableOpacity>
-                ) : null
-              }
-            />
+                )}
+              </View>
+            </ScrollView>
           </View>
         ) : isExpanded ? (
           <View style={styles.listContainer}>
@@ -1037,7 +1041,6 @@ export default function DiscoveryScreen() {
                 data={filteredAnchors}
                 keyExtractor={(item) => item.anchor_id}
                 renderItem={({ item }) => (
-                  // NEW: pass isSelected and updated onPress to highlight row
                   <AnchorRowCard
                     anchor={item}
                     isSelected={selectedAnchorId === item.anchor_id}
@@ -1394,7 +1397,6 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     gap: 8,
   },
-  // NEW: highlighted card style when selected
   anchorCardSelected: {
     borderColor: colors.accentPink,
     backgroundColor: colors.selectedCanvas,
@@ -1574,22 +1576,36 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
   },
-  detailListContent: {
-    paddingHorizontal: 16,
-    paddingBottom: 20,
-    gap: 10,
+  detailScrollContent: {
+    paddingHorizontal: 0,
+    paddingBottom: 40,
+    paddingTop: 4,
   },
   detailTopSection: {
-    gap: 10,
-    paddingBottom: 4,
+    paddingHorizontal: 16,
+    paddingBottom: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    marginBottom: 20,
   },
   detailStatusRow: {
     flexDirection: "row",
     alignItems: "center",
+    alignSelf: "flex-start",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
     gap: 6,
+    marginBottom: 12,
+  },
+  detailStatusRowUnlocked: {
+    backgroundColor: "#E7F8EF",
+  },
+  detailStatusRowLocked: {
+    backgroundColor: "#FEE8ED",
   },
   detailStatusText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "700",
   },
   detailStatusTextUnlocked: {
@@ -1598,43 +1614,81 @@ const styles = StyleSheet.create({
   detailStatusTextLocked: {
     color: colors.accentPink,
   },
+  detailMainTitle: {
+    fontSize: 24,
+    fontWeight: "800",
+    color: colors.text,
+    marginBottom: 4,
+  },
+  detailCreatorText: {
+    fontSize: 14,
+    color: colors.muted,
+    marginBottom: 10,
+    fontWeight: "500",
+  },
+  detailMainDesc: {
+    fontSize: 15,
+    color: colors.muted,
+    lineHeight: 22,
+    marginBottom: 16,
+  },
   detailTagRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
   },
   detailTagPill: {
-    backgroundColor: "#FEE8ED",
-    borderRadius: 999,
+    backgroundColor: colors.white,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 8,
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 6,
   },
   detailTagText: {
-    color: colors.accentPink,
-    fontSize: 11,
-    fontWeight: "700",
-  },
-  detailItem: {
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    padding: 12,
-    gap: 4,
-  },
-  detailLabel: {
-    color: colors.muted,
+    color: colors.text,
     fontSize: 12,
     fontWeight: "600",
   },
-  detailValue: {
+  detailInfoGrid: {
+    paddingHorizontal: 16,
+    gap: 16,
+    marginBottom: 32,
+  },
+  detailInfoItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+  },
+  detailInfoIconSection: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  detailInfoTextSection: {
+    flex: 1,
+  },
+  detailInfoLabel: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: "600",
+    marginBottom: 2,
+  },
+  detailInfoValue: {
     color: colors.text,
-    fontSize: 14,
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  detailActionRow: {
+    paddingHorizontal: 16,
   },
   markerWrapper: { width: 30, height: 30 },
-  // NEW: larger wrapper for selected marker
   markerWrapperSelected: { width: 38, height: 38 },
-  // NEW: pink ring + shadow for selected marker
   mapMarkerSelected: {
     borderColor: colors.accentPink,
     borderWidth: 3,
@@ -1681,16 +1735,35 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
-    marginTop: 8,
-    marginBottom: 4,
-    paddingVertical: 12,
+    gap: 8,
+    paddingVertical: 14,
+    backgroundColor: colors.white,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 12,
+    borderRadius: 14,
   },
   reportButtonText: {
-    fontSize: 14,
+    fontSize: 15,
     color: colors.muted,
+    fontWeight: "600",
   },
+  editButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 14,
+    backgroundColor: colors.accentPink,
+    borderRadius: 14,
+    shadowColor: colors.accentPink,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  editButtonText: {
+    fontSize: 15,
+    color: colors.white,
+    fontWeight: "700",
+  }
 });

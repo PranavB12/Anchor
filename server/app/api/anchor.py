@@ -187,6 +187,7 @@ def _row_to_response(row) -> AnchorResponse:
         activation_time=row.activation_time,
         expiration_time=row.expiration_time,
         always_active=row.expiration_time is None,
+        is_unlocked=bool(getattr(row, "is_unlocked", False)),
         content_type=content_type,
         tags=tags,
     )
@@ -610,6 +611,7 @@ def get_nearby_anchors(
         "lat": lat,
         "lon": lon,
         "radius_m": radius_km * 1000,  # Convert km to meters for ST_Distance_Sphere
+        "session_user_id": user_id,
     }
 
     # Always return only anchors active for the current time window.
@@ -655,12 +657,16 @@ def get_nearby_anchors(
                     FROM Content c
                     WHERE c.anchor_id = a.anchor_id
                 ) AS content_type,
+                -- Verify if already unlocked by this user or created by them
+                (ua.anchor_id IS NOT NULL OR a.creator_id = :session_user_id) AS is_unlocked,
                 -- Calculate distance in meters from user's position to each anchor
                 ST_Distance_Sphere(
                     a.location,
                     ST_GeomFromText(:user_point, 4326)
                 ) AS distance_m
             FROM anchors a
+            LEFT JOIN unlocked_anchors ua 
+                ON a.anchor_id = ua.anchor_id AND ua.user_id = :session_user_id
             WHERE ST_Distance_Sphere(
                 a.location,
                 ST_GeomFromText(:user_point, 4326)
@@ -671,6 +677,55 @@ def get_nearby_anchors(
         {**params, "user_point": f"POINT({lon} {lat})"},
     ).fetchall()
 
-    results = [_row_to_response(row) for row in rows]
+    results = []
+    for row in rows:
+        is_unlocked = bool(row.is_unlocked)
+        # Auto-unlock logic
+        if not is_unlocked and row.status == 'ACTIVE' and row.distance_m <= row.unlock_radius:
+            try:
+                # 1. Insert into tracking table
+                db.execute(
+                    text("INSERT INTO unlocked_anchors (user_id, anchor_id) VALUES (:user_id, :anchor_id)"),
+                    {"user_id": user_id, "anchor_id": row.anchor_id}
+                )
+                
+                # 2. Increment unlock count
+                db.execute(
+                    text("UPDATE anchors SET current_unlock = current_unlock + 1 WHERE anchor_id = :anchor_id"),
+                    {"anchor_id": row.anchor_id}
+                )
+                
+                # 3. Check max auto-expire immediately on the DB side
+                if row.max_unlock is not None and (row.current_unlock + 1) >= row.max_unlock:
+                    db.execute(
+                        text("UPDATE anchors SET status = 'EXPIRED' WHERE anchor_id = :anchor_id AND current_unlock >= max_unlock"),
+                        {"anchor_id": row.anchor_id}
+                    )
+                
+                db.commit()
+                is_unlocked = True
+                
+                # We artificially increment the count in the response so the UI is up to date immediately
+                row_dict = dict(row._mapping)
+                row_dict["current_unlock"] += 1
+                if row.max_unlock is not None and row_dict["current_unlock"] >= row.max_unlock:
+                    row_dict["status"] = "EXPIRED"
+                
+                # Use a dummy object to pass to _row_to_response
+                class DynamicRow:
+                    def __init__(self, **entries):
+                        self.__dict__.update(entries)
+                
+                row_obj = DynamicRow(**row_dict)
+                row_obj.is_unlocked = True
+                results.append(_row_to_response(row_obj))
+                continue
+                
+            except Exception:
+                db.rollback()
+                # If race condition or unique constraint fails, just ignore
+                pass
+                
+        results.append(_row_to_response(row))
 
     return results

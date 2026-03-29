@@ -22,6 +22,7 @@ import DateTimePicker, {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../context/AuthContext";
 import { updateAnchor, deleteAnchor } from "../services/anchorService";
+import * as DocumentPicker from "expo-document-picker";
 
 type Props = NativeStackScreenProps<RootStackParamList, "EditAnchor">;
 
@@ -86,6 +87,29 @@ export default function EditAnchor({ navigation, route }: Props) {
     const [tags, setTags] = useState<string[]>(anchor.tags ?? []);
     const [tagInput, setTagInput] = useState("");
     const [tagInputFocused, setTagInputFocused] = useState(false);
+
+    // ─── Document Picker ──────────────────────────────────────────────────────
+    const [selectedFile, setSelectedFile] = useState<{ uri: string; name: string; type: string } | null>(null);
+
+    const handlePickFile = async () => {
+        try {
+            const result = await DocumentPicker.getDocumentAsync({
+                type: "*/*",
+                copyToCacheDirectory: true,
+            });
+
+            if (!result.canceled && result.assets && result.assets.length > 0) {
+                const file = result.assets[0];
+                setSelectedFile({
+                    uri: file.uri,
+                    name: file.name,
+                    type: file.mimeType || "application/octet-stream",
+                });
+            }
+        } catch (err: any) {
+            Alert.alert("File Error", err.message || "Failed to pick file");
+        }
+    };
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
     const formatDateTime = (date: Date) =>
@@ -192,16 +216,37 @@ export default function EditAnchor({ navigation, route }: Props) {
         if (!session?.access_token) return;
         setIsSubmitting(true);
         try {
+            const originalActivation = anchor.activation_time ? new Date(anchor.activation_time).toISOString() : null;
+            const newActivation = creationManuallySet ? creationTime.toISOString() : null;
+            const finalActivationTime = (originalActivation === newActivation) ? undefined : newActivation;
+
             await updateAnchor(anchor.anchor_id, {
                 title: title.trim(),
                 description: content.trim() || null,
                 visibility: frontendToBackendVisibility(visibility),
                 unlock_radius: radius,
                 max_unlock: maxUnlock.trim() ? parseInt(maxUnlock, 10) : null,
-                activation_time: creationManuallySet ? creationTime.toISOString() : null,
+                activation_time: finalActivationTime,
                 expiration_time: expiryTime ? expiryTime.toISOString() : null,
                 tags,
             }, session.access_token);
+
+            if (contentType === "file" && selectedFile) {
+                try {
+                    const { uploadAnchorAttachment } = require('../services/anchorService');
+                    await uploadAnchorAttachment(
+                        anchor.anchor_id,
+                        session.user_id,
+                        selectedFile.uri,
+                        selectedFile.name,
+                        selectedFile.type,
+                        session.access_token
+                    );
+                } catch (e: any) {
+                    Alert.alert("Attachment Error", "Anchor updated but attachment failed: " + e.message);
+                }
+            }
+
             navigation.goBack();
         } catch (err) {
             Alert.alert("Error", err instanceof Error ? err.message : "Failed to save anchor.");
@@ -314,10 +359,28 @@ export default function EditAnchor({ navigation, route }: Props) {
                         />
                     )}
                     {contentType === "file" && (
-                        <TouchableOpacity style={[styles.input, styles.filePlaceholder]} activeOpacity={0.7}>
-                            <Feather name="upload" size={22} color={colors.accentPink} />
-                            <Text style={styles.filePlaceholderText}>Tap to attach a file</Text>
-                            <Text style={styles.filePlaceholderSub}>PDF, image, audio, etc.</Text>
+                        <TouchableOpacity 
+                            style={[
+                                styles.input, 
+                                styles.filePlaceholder,
+                                selectedFile && { borderStyle: "solid", borderColor: colors.accentPink, backgroundColor: "#FEE8ED" }
+                            ]} 
+                            activeOpacity={0.7}
+                            onPress={handlePickFile}
+                        >
+                            {selectedFile ? (
+                                <>
+                                    <Feather name="file" size={26} color={colors.accentPink} />
+                                    <Text style={[styles.filePlaceholderText, { color: colors.accentPink }]}>{selectedFile.name}</Text>
+                                    <Text style={[styles.filePlaceholderSub, { color: colors.accentPink }]}>Tap to change file</Text>
+                                </>
+                            ) : (
+                                <>
+                                    <Feather name="upload" size={22} color={colors.accentPink} />
+                                    <Text style={styles.filePlaceholderText}>Tap to attach a file</Text>
+                                    <Text style={styles.filePlaceholderSub}>PDF, image, audio, etc.</Text>
+                                </>
+                            )}
                         </TouchableOpacity>
                     )}
                     {contentType === "link" && (

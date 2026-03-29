@@ -20,6 +20,7 @@ export type NearbyAnchor = {
   activation_time: string | null;
   expiration_time: string | null;
   always_active: boolean;
+  is_unlocked: boolean;
   tags: string[] | null;
 };
 
@@ -129,4 +130,80 @@ export async function reportAnchor(
     token,
     body,
   });
+}
+
+// -------------------------------------------------------------
+// Auto-Unlock Endpoints (US4)
+// -------------------------------------------------------------
+
+export async function unlockAnchor(anchorId: string, token: string) {
+  return apiRequest<{ message: string; anchor_id: string; unlocks: number }>(
+    `/anchors/${anchorId}/unlock`,
+    {
+      method: "POST",
+      token,
+    }
+  );
+}
+
+// -------------------------------------------------------------
+// Mock Attachment / Content Endpoints (US1)
+// -------------------------------------------------------------
+
+export type AttachmentType = 'IMAGE' | 'DOCUMENT' | 'AUDIO';
+
+export type AnchorAttachment = {
+  id: string;
+  anchor_id: string;
+  creator_id: string;
+  type: AttachmentType;
+  file_url: string;
+  file_name: string;
+  uploaded_at: string;
+};
+
+// In-memory mock store for attachments
+const MOCK_ATTACHMENTS: Record<string, AnchorAttachment[]> = {};
+
+export async function getAnchorAttachments(
+  anchorId: string,
+  token: string,
+): Promise<AnchorAttachment[]> {
+  // TODO: Replace with real backend API call
+  // Example: return apiRequest<AnchorAttachment[]>(`/anchors/${anchorId}/content`, { ... })
+  
+  // Simulated network delay
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  return MOCK_ATTACHMENTS[anchorId] || [];
+}
+
+export async function uploadAnchorAttachment(
+  anchorId: string,
+  userId: string,
+  fileUri: string,
+  fileName: string,
+  mimeType: string,
+  token: string,
+): Promise<AnchorAttachment> {
+  // TODO: Replace with real backend API / S3 bucket upload logic
+  // e.g. FormData upload to POST /anchors/${anchorId}/content
+  
+  await new Promise((resolve) => setTimeout(resolve, 800));
+
+  const newAttachment: AnchorAttachment = {
+    id: Math.random().toString(36).substring(7),
+    anchor_id: anchorId,
+    creator_id: userId,
+    type: mimeType.startsWith("image/") ? 'IMAGE' : 'DOCUMENT',
+    file_url: fileUri, // Mock local file uri
+    file_name: fileName,
+    uploaded_at: new Date().toISOString(),
+  };
+
+  if (!MOCK_ATTACHMENTS[anchorId]) {
+    MOCK_ATTACHMENTS[anchorId] = [];
+  }
+  MOCK_ATTACHMENTS[anchorId].push(newAttachment);
+
+  return newAttachment;
 }

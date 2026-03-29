@@ -26,6 +26,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { apiRequest } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { CreateAnchorBody } from "../services/anchorService";
+import * as DocumentPicker from 'expo-document-picker';
 
 
 // Dummy circle. TODO: CHANGE THEM LATER TO GET FROM BACKEND!!!
@@ -51,12 +52,12 @@ export default function AnchorCreation({ navigation, route }: Props) {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Date Entry
-  const [creationTime, setCreationTime] = useState<Date>(new Date());
+  const [startTime, setStartTime] = useState<Date | null>(null);
+  const [showStartPicker, setShowStartPicker] = useState(false);
   const [alwaysActive, setAlwaysActive] = useState(true);
   const [expiryTime, setExpiryTime] = useState<Date | null>(null);
   const [dateError, setDateError] = useState<string | null>(null);
 
-  const [showCreationPicker, setShowCreationPicker] = useState(false);
   const [showExpiryPicker, setShowExpiryPicker] = useState(false);
 
   // Cirlce entry
@@ -72,6 +73,29 @@ export default function AnchorCreation({ navigation, route }: Props) {
   const [tagInput, setTagInput] = useState("");
   const [tagInputFocused, setTagInputFocused] = useState(false);
 
+  // File Attachment
+  const [selectedFile, setSelectedFile] = useState<{ uri: string; name: string; type: string } | null>(null);
+
+  const handlePickFile = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: "*/*",
+        copyToCacheDirectory: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const file = result.assets[0];
+        setSelectedFile({
+          uri: file.uri,
+          name: file.name,
+          type: file.mimeType || "application/octet-stream",
+        });
+      }
+    } catch (err: any) {
+      Alert.alert("File Error", err.message || "Failed to pick file");
+    }
+  };
+
   // helpers
   const formatDateTime = (date: Date) => {
     return date.toLocaleString([], {
@@ -80,15 +104,11 @@ export default function AnchorCreation({ navigation, route }: Props) {
   };
 
   const getDateValidationError = (
-    creation: Date,
     expiry: Date | null,
     alwaysOn: boolean,
   ): string | null => {
     // Allow slight client/server timing drift for "now".
     const now = new Date(Date.now() - 60 * 1000);
-    if (creation < now) {
-      return "Start time cannot be in the past.";
-    }
     if (!alwaysOn) {
       if (!expiry) {
         return "Please set an end time or turn on Always active.";
@@ -96,32 +116,24 @@ export default function AnchorCreation({ navigation, route }: Props) {
       if (expiry < now) {
         return "End time cannot be in the past.";
       }
-      if (expiry <= creation) {
-        return "End time must be after start time.";
-      }
     }
     return null;
   };
 
-  const validateDates = (creation: Date, expiry: Date | null, alwaysOn: boolean) => {
-    const error = getDateValidationError(creation, expiry, alwaysOn);
+  const validateDates = (expiry: Date | null, alwaysOn: boolean) => {
+    const error = getDateValidationError(expiry, alwaysOn);
     setDateError(error);
     return !error;
   };
 
-  const handleSetCreation = (date: Date) => {
-    setCreationTime(date);
-    validateDates(date, expiryTime, alwaysActive);
-  };
-
   const handleSetExpiry = (date: Date) => {
     setExpiryTime(date);
-    validateDates(creationTime, date, alwaysActive);
+    validateDates(date, alwaysActive);
   };
 
   const handleClearExpiry = () => {
     setExpiryTime(null);
-    validateDates(creationTime, null, alwaysActive);
+    validateDates(null, alwaysActive);
   };
 
   const handleToggleAlwaysActive = (value: boolean) => {
@@ -129,16 +141,15 @@ export default function AnchorCreation({ navigation, route }: Props) {
     if (value) {
       setExpiryTime(null);
       setShowExpiryPicker(false);
-      validateDates(creationTime, null, true);
+      validateDates(null, true);
       return;
     }
-    validateDates(creationTime, expiryTime, false);
+    validateDates(expiryTime, false);
   };
 
   // Android date picker. iOS will probably need a different one, will have to test on iOS with an iOS device.
-  const showAndroidPicker = (type: 'creation' | 'expiry') => {
-    const isCreation = type === 'creation';
-    const initialDate = isCreation ? creationTime : expiryTime || new Date();
+  const showAndroidPicker = () => {
+    const initialDate = expiryTime || new Date();
     DateTimePickerAndroid.open({
       value: initialDate,
       mode: 'date',
@@ -153,11 +164,7 @@ export default function AnchorCreation({ navigation, route }: Props) {
             is24Hour: true,
             onChange: (timeEvent, finalDateTime) => {
               if (timeEvent.type === 'set' && finalDateTime) {
-                if (isCreation) {
-                  handleSetCreation(finalDateTime);
-                } else {
-                  handleSetExpiry(finalDateTime);
-                }
+                handleSetExpiry(finalDateTime);
               }
             }
           });
@@ -166,22 +173,45 @@ export default function AnchorCreation({ navigation, route }: Props) {
     });
   };
 
-  const handlePressCreation = () => {
-    if (Platform.OS === 'android') {
-      showAndroidPicker('creation');
-    } else {
-      setShowCreationPicker(true);
-    }
-  };
-
   const handlePressExpiry = () => {
     if (alwaysActive) {
       return;
     }
     if (Platform.OS === 'android') {
-      showAndroidPicker('expiry');
+      showAndroidPicker();
     } else {
       setShowExpiryPicker(true);
+    }
+  };
+
+  const showAndroidStartPicker = () => {
+    const initialDate = startTime || new Date();
+    DateTimePickerAndroid.open({
+      value: initialDate,
+      mode: 'date',
+      display: 'calendar',
+      onChange: (event, date) => {
+        if (event.type === 'set' && date) {
+          DateTimePickerAndroid.open({
+            value: date,
+            mode: 'time',
+            is24Hour: true,
+            onChange: (timeEvent, finalDateTime) => {
+              if (timeEvent.type === 'set' && finalDateTime) {
+                setStartTime(finalDateTime);
+              }
+            }
+          });
+        }
+      },
+    });
+  };
+
+  const handlePressStart = () => {
+    if (Platform.OS === 'android') {
+      showAndroidStartPicker();
+    } else {
+      setShowStartPicker(true);
     }
   };
 
@@ -215,7 +245,7 @@ export default function AnchorCreation({ navigation, route }: Props) {
 
   // Submitting logic
   const handleDropAnchor = async () => {
-    if (!validateDates(creationTime, expiryTime, alwaysActive)) {
+    if (!validateDates(expiryTime, alwaysActive)) {
       return;
     }
     if (!title.trim()) {
@@ -229,13 +259,18 @@ export default function AnchorCreation({ navigation, route }: Props) {
 
     const visibilityMap = { Public: "PUBLIC", Circle: "CIRCLE_ONLY", Private: "PRIVATE" } as const;
 
+    const now = new Date();
+    const finalActivationTime = startTime 
+      ? (startTime < now ? now.toISOString() : startTime.toISOString()) 
+      : undefined;
+
     const body: CreateAnchorBody = {
       title: title.trim(),
       latitude,
       longitude,
       visibility: visibilityMap[visibility],
       unlock_radius: Math.round(radius),
-      activation_time: creationTime.toISOString(),
+      activation_time: finalActivationTime,
       expiration_time: alwaysActive ? null : (expiryTime ? expiryTime.toISOString() : null),
       always_active: alwaysActive,
       description: content.trim() || null,
@@ -244,11 +279,29 @@ export default function AnchorCreation({ navigation, route }: Props) {
     };
     setIsSubmitting(true);
     try {
-      await apiRequest("/anchors/", {
+      const createdAnchor = await apiRequest<{ anchor_id: string }>("/anchors/", {
         method: "POST",
         body,
         token: session.access_token,
       });
+      
+      if (contentType === "file" && selectedFile && createdAnchor?.anchor_id) {
+        try {
+          // Requires mock or real uploadAnchorAttachment API implementation
+          const { uploadAnchorAttachment } = require('../services/anchorService');
+          await uploadAnchorAttachment(
+            createdAnchor.anchor_id,
+            session.user_id,
+            selectedFile.uri,
+            selectedFile.name,
+            selectedFile.type,
+            session.access_token
+          );
+        } catch (e: any) {
+          Alert.alert("Attachment Error", "Anchor created but attachment failed: " + e.message);
+        }
+      }
+
       navigation.navigate("Discovery");
     } catch (err: any) {
       Alert.alert("Error", err.message || "Failed to create anchor.");
@@ -368,10 +421,28 @@ export default function AnchorCreation({ navigation, route }: Props) {
             />
           )}
           {contentType === "file" && (
-            <TouchableOpacity style={[styles.input, styles.filePlaceholder]} activeOpacity={0.7}>
-              <Feather name="upload" size={22} color={colors.accentPink} />
-              <Text style={styles.filePlaceholderText}>Tap to attach a file</Text>
-              <Text style={styles.filePlaceholderSub}>PDF, image, audio, etc.</Text>
+            <TouchableOpacity 
+              style={[
+                styles.input, 
+                styles.filePlaceholder, 
+                selectedFile && { borderStyle: "solid", borderColor: colors.accentPink, backgroundColor: "#FEE8ED" }
+              ]} 
+              activeOpacity={0.7}
+              onPress={handlePickFile}
+            >
+              {selectedFile ? (
+                <>
+                  <Feather name="file" size={26} color={colors.accentPink} />
+                  <Text style={[styles.filePlaceholderText, { color: colors.accentPink }]}>{selectedFile.name}</Text>
+                  <Text style={[styles.filePlaceholderSub, { color: colors.accentPink }]}>Tap to change file</Text>
+                </>
+              ) : (
+                <>
+                  <Feather name="upload" size={22} color={colors.accentPink} />
+                  <Text style={styles.filePlaceholderText}>Tap to attach a file</Text>
+                  <Text style={styles.filePlaceholderSub}>PDF, image, audio, etc.</Text>
+                </>
+              )}
             </TouchableOpacity>
           )}
           {contentType === "link" && (
@@ -393,8 +464,52 @@ export default function AnchorCreation({ navigation, route }: Props) {
           <VisibilityOption id="Private" title="Private" subtitle="Only you" icon="lock" />
 
 
-          {/* DATE AND TIME FOR CREATION/EXPIRY UI */}
-          <Text style={styles.sectionLabel}>Expiry Settings</Text>
+          {/* DATE AND TIME */}
+          <Text style={styles.sectionLabel}>Date & Time Settings</Text>
+          <View style={[styles.optionCard, !!startTime && styles.optionCardSelected]}>
+            <TouchableOpacity
+              style={styles.dateCardMain}
+              onPress={handlePressStart}
+              activeOpacity={0.7}
+            >
+              <View
+                style={[
+                  styles.iconContainer,
+                  startTime ? styles.iconContainerSelected : styles.iconContainerOutline,
+                ]}
+              >
+                <Feather
+                  name="clock"
+                  size={20}
+                  color={startTime ? colors.white : colors.accentPink}
+                />
+              </View>
+              <View style={styles.optionTextContainer}>
+                <Text style={styles.optionTitle}>Start Date & Time</Text>
+                <Text style={styles.optionSubtitle}>
+                  {startTime ? formatDateTime(startTime) : "Now (Default)"}
+                </Text>
+              </View>
+            </TouchableOpacity>
+            {startTime && (
+              <TouchableOpacity onPress={() => setStartTime(null)} style={styles.clearBtn} hitSlop={8}>
+                <Feather name="x" size={16} color={colors.muted} />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {Platform.OS === 'ios' && showStartPicker && (
+            <DateTimePicker
+              value={startTime || new Date()}
+              mode="datetime"
+              display="default"
+              onChange={(e, d) => {
+                if (e.type === 'set' && d) setStartTime(d);
+                setShowStartPicker(false);
+              }}
+            />
+          )}
+
           <View style={styles.alwaysActiveRow}>
             <Text style={styles.alwaysActiveLabel}>Always Active</Text>
             <Switch
@@ -409,39 +524,6 @@ export default function AnchorCreation({ navigation, route }: Props) {
               <Feather name="alert-circle" size={14} color={colors.error} />
               <Text style={styles.errorText}>{dateError}</Text>
             </View>
-          )}
-
-
-          <View style={[styles.optionCard, styles.optionCardSelected]}>
-            <TouchableOpacity
-              style={styles.dateCardMain}
-              onPress={handlePressCreation}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.iconContainer, styles.iconContainerSelected]}>
-                <Feather name="calendar" size={20} color={colors.white} />
-              </View>
-              <View style={styles.optionTextContainer}>
-                <Text style={styles.optionTitle}>Start Date & Time</Text>
-                <Text style={styles.optionSubtitle}>
-                  {formatDateTime(creationTime)}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          </View>
-
-          {Platform.OS === 'ios' && showCreationPicker && (
-            <DateTimePicker
-              value={creationTime}
-              mode="datetime"
-              display="default"
-              onChange={(e, d) => {
-                if (e.type === 'set' && d) {
-                  handleSetCreation(d);
-                }
-                setShowCreationPicker(false);
-              }}
-            />
           )}
 
           <View

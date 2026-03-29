@@ -66,6 +66,8 @@ class AnchorResponse(BaseModel):
     expiration_time: Optional[datetime] = None
     # always_active=True means the anchor has no expiration time set
     always_active: bool
+    # Whether the current requesting user has unlocked this anchor
+    is_unlocked: bool = False
     # Distinct content types attached to this anchor (TEXT, FILE, LINK)
     content_type: Optional[List[str]] = None
     tags: Optional[List[str]] = None

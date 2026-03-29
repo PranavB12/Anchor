@@ -110,6 +110,16 @@ CREATE TABLE IF NOT EXISTS reports (
     INDEX idx_reports_status (status)
 );
 
+CREATE TABLE IF NOT EXISTS unlocked_anchors (
+    user_id         CHAR(36)    NOT NULL,
+    anchor_id       CHAR(36)    NOT NULL,
+    unlocked_at     DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (user_id, anchor_id),
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+    FOREIGN KEY (anchor_id) REFERENCES anchors(anchor_id) ON DELETE CASCADE
+);
+
 -- ---------------------------------------------------------------------------
 -- Seed data for local development
 -- ---------------------------------------------------------------------------
