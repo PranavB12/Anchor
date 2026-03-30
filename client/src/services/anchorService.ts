@@ -4,6 +4,8 @@ export type AnchorVisibility = "PUBLIC" | "PRIVATE" | "CIRCLE_ONLY";
 
 export type AnchorStatus = "ACTIVE" | "EXPIRED" | "LOCKED" | "FLAGGED";
 
+export type AnchorContentType = "TEXT" | "FILE" | "LINK";
+
 export type NearbyAnchor = {
   anchor_id: string;
   creator_id: string;
@@ -21,6 +23,7 @@ export type NearbyAnchor = {
   expiration_time: string | null;
   always_active: boolean;
   is_unlocked: boolean;
+  content_type: AnchorContentType[] | null;
   tags: string[] | null;
 };
 
@@ -61,14 +64,38 @@ export async function createAnchor(body: CreateAnchorBody, token: string) {
   });
 }
 
-type GetNearbyAnchorsParams = {
+export type GetNearbyAnchorsParams = {
   lat: number;
   lon: number;
   radiusKm?: number;
-  visibility?: AnchorVisibility;
-  anchorStatus?: AnchorStatus;
+  visibility?: AnchorVisibility[];
+  anchorStatus?: AnchorStatus[];
+  contentType?: AnchorContentType[];
+  tags?: string[];
   sortBy?: "distance" | "created_at";
 };
+
+export type AnchorFilterOption = {
+  value: string;
+  count: number;
+};
+
+export type NearbyAnchorFilterOptions = {
+  visibility: AnchorFilterOption[];
+  anchor_status: AnchorFilterOption[];
+  content_type: AnchorFilterOption[];
+  tags: AnchorFilterOption[];
+};
+
+function appendRepeatedParams(
+  query: URLSearchParams,
+  key: string,
+  values?: string[],
+) {
+  for (const value of values ?? []) {
+    query.append(key, value);
+  }
+}
 
 export async function getNearbyAnchors(
   params: GetNearbyAnchorsParams,
@@ -81,17 +108,39 @@ export async function getNearbyAnchors(
     sort_by: params.sortBy ?? "distance",
   });
 
-  if (params.visibility) {
-    query.set("visibility", params.visibility);
-  }
-  if (params.anchorStatus) {
-    query.set("anchor_status", params.anchorStatus);
-  }
+  appendRepeatedParams(query, "visibility", params.visibility);
+  appendRepeatedParams(query, "anchor_status", params.anchorStatus);
+  appendRepeatedParams(query, "content_type", params.contentType);
+  appendRepeatedParams(query, "tags", params.tags);
 
   return apiRequest<NearbyAnchor[]>(`/anchors/nearby?${query.toString()}`, {
     method: "GET",
     token,
   });
+}
+
+export async function getNearbyAnchorFilterOptions(
+  params: Omit<GetNearbyAnchorsParams, "sortBy">,
+  token: string,
+) {
+  const query = new URLSearchParams({
+    lat: String(params.lat),
+    lon: String(params.lon),
+    radius_km: String(params.radiusKm ?? 5),
+  });
+
+  appendRepeatedParams(query, "visibility", params.visibility);
+  appendRepeatedParams(query, "anchor_status", params.anchorStatus);
+  appendRepeatedParams(query, "content_type", params.contentType);
+  appendRepeatedParams(query, "tags", params.tags);
+
+  return apiRequest<NearbyAnchorFilterOptions>(
+    `/anchors/nearby/filter-options?${query.toString()}`,
+    {
+      method: "GET",
+      token,
+    },
+  );
 }
 
 export type UpdateAnchorBody = {

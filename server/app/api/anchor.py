@@ -14,6 +14,7 @@ Endpoints:
 
 import json
 import uuid
+from collections import Counter
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Tuple
 
@@ -23,7 +24,13 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user_id
-from app.schemas.anchor import CreateAnchorRequest, UpdateAnchorRequest, AnchorResponse
+from app.schemas.anchor import (
+    CreateAnchorRequest,
+    UpdateAnchorRequest,
+    AnchorFilterOption,
+    AnchorFilterOptionsResponse,
+    AnchorResponse,
+)
 
 router = APIRouter(prefix="/anchors", tags=["Anchors"])
 
@@ -81,87 +88,169 @@ def _parse_content_types(raw_content_type) -> Optional[List[str]]:
     return None
 
 
-def _normalize_visibility_filter(visibility: Optional[str]) -> Optional[str]:
-    if visibility is None:
+def _normalize_enum_filter(
+    values,
+    valid_values: set[str],
+    detail: str,
+) -> Optional[List[str]]:
+    if values is None:
         return None
-    normalized = visibility.strip().upper()
-    if normalized not in VALID_VISIBILITY:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="visibility must be PUBLIC, PRIVATE, or CIRCLE_ONLY",
-        )
-    return normalized
-
-
-def _normalize_status_filter(anchor_status: Optional[str]) -> Optional[str]:
-    if anchor_status is None:
-        return None
-    normalized = anchor_status.strip().upper()
-    if normalized not in VALID_ANCHOR_STATUS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="status must be ACTIVE, EXPIRED, LOCKED, or FLAGGED",
-        )
-    return normalized
-
-
-def _normalize_content_type_filter(content_type: Optional[List[str]]) -> Optional[List[str]]:
-    if not content_type:
-        return None
+    if isinstance(values, str):
+        values = [values]
 
     normalized: List[str] = []
-    for item in content_type:
+    for item in values:
         candidate = item.strip().upper()
-        if candidate not in VALID_CONTENT_TYPES:
+        if candidate not in valid_values:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="content_type must be one of TEXT, FILE, LINK",
+                detail=detail,
             )
         if candidate not in normalized:
             normalized.append(candidate)
     return normalized or None
 
 
+def _normalize_visibility_filter(visibility) -> Optional[List[str]]:
+    return _normalize_enum_filter(
+        visibility,
+        VALID_VISIBILITY,
+        "visibility must be PUBLIC, PRIVATE, or CIRCLE_ONLY",
+    )
+
+
+def _normalize_status_filter(anchor_status) -> Optional[List[str]]:
+    return _normalize_enum_filter(
+        anchor_status,
+        VALID_ANCHOR_STATUS,
+        "status must be ACTIVE, EXPIRED, LOCKED, or FLAGGED",
+    )
+
+
+def _normalize_content_type_filter(content_type) -> Optional[List[str]]:
+    return _normalize_enum_filter(
+        content_type,
+        VALID_CONTENT_TYPES,
+        "content_type must be one of TEXT, FILE, LINK",
+    )
+
+
+def _normalize_tag_filter(tags) -> Optional[List[str]]:
+    if not tags:
+        return None
+    if isinstance(tags, str):
+        tags = [tags]
+
+    normalized: List[str] = []
+    for item in tags:
+        candidate = item.strip().lower()
+        if not candidate:
+            continue
+        if candidate not in normalized:
+            normalized.append(candidate)
+    return normalized or None
+
+
+def _normalize_stored_tags(tags: Optional[List[str]]) -> Optional[List[str]]:
+    return _normalize_tag_filter(tags)
+
+
+def _add_in_clause(
+    field_sql: str,
+    values: List[str],
+    param_prefix: str,
+    params: Dict[str, object],
+) -> str:
+    placeholders: List[str] = []
+    for idx, value in enumerate(values):
+        key = f"{param_prefix}_{idx}"
+        placeholders.append(f":{key}")
+        params[key] = value
+    return f"{field_sql} IN ({', '.join(placeholders)})"
+
+
 def _build_anchor_filters(
     table_alias: str,
-    visibility: Optional[str] = None,
-    anchor_status: Optional[str] = None,
-    content_type: Optional[List[str]] = None,
+    visibility=None,
+    anchor_status=None,
+    content_type=None,
+    tags=None,
 ) -> Tuple[str, Dict[str, object]]:
     filters: List[str] = []
     params: Dict[str, object] = {}
 
     normalized_visibility = _normalize_visibility_filter(visibility)
     if normalized_visibility:
-        filters.append(f"{table_alias}.visibility = :visibility")
-        params["visibility"] = normalized_visibility
+        filters.append(
+            _add_in_clause(
+                f"{table_alias}.visibility",
+                normalized_visibility,
+                "visibility",
+                params,
+            )
+        )
 
     normalized_status = _normalize_status_filter(anchor_status)
     if normalized_status:
-        filters.append(f"{table_alias}.status = :anchor_status")
-        params["anchor_status"] = normalized_status
+        filters.append(
+            _add_in_clause(
+                f"{table_alias}.status",
+                normalized_status,
+                "anchor_status",
+                params,
+            )
+        )
 
     normalized_content_types = _normalize_content_type_filter(content_type)
     if normalized_content_types:
-        placeholders: List[str] = []
-        for idx, item in enumerate(normalized_content_types):
-            key = f"content_type_{idx}"
-            placeholders.append(f":{key}")
-            params[key] = item
+        in_clause = _add_in_clause(
+            "c.content_type",
+            normalized_content_types,
+            "content_type",
+            params,
+        )
         filters.append(
             f"""
             EXISTS (
                 SELECT 1
                 FROM Content c
                 WHERE c.anchor_id = {table_alias}.anchor_id
-                AND c.content_type IN ({", ".join(placeholders)})
+                AND {in_clause}
             )
             """
         )
 
+    normalized_tags = _normalize_tag_filter(tags)
+    if normalized_tags:
+        tag_filters: List[str] = []
+        for idx, tag in enumerate(normalized_tags):
+            key = f"tag_{idx}"
+            params[key] = json.dumps(tag)
+            tag_filters.append(
+                f"JSON_CONTAINS(COALESCE({table_alias}.tags, JSON_ARRAY()), CAST(:{key} AS JSON), '$')"
+            )
+        filters.append(f"({' OR '.join(tag_filters)})")
+
     if not filters:
         return "", params
     return " AND " + " AND ".join(filters), params
+
+
+def _serialize_filter_counts(
+    counter: Counter,
+    order: Optional[List[str]] = None,
+) -> List[AnchorFilterOption]:
+    if order is not None:
+        return [
+            AnchorFilterOption(value=value, count=counter[value])
+            for value in order
+            if counter[value] > 0
+        ]
+
+    return [
+        AnchorFilterOption(value=value, count=count)
+        for value, count in sorted(counter.items(), key=lambda item: (-item[1], item[0]))
+    ]
 
 
 def _row_to_response(row) -> AnchorResponse:
@@ -248,7 +337,8 @@ def create_anchor(
 
     anchor_id = str(uuid.uuid4())
     # Serialize tags list to JSON string for DB storage, or None if no tags provided
-    tags_json = json.dumps(payload.tags) if payload.tags else None
+    normalized_tags = _normalize_stored_tags(payload.tags)
+    tags_json = json.dumps(normalized_tags) if normalized_tags else None
 
     activation_time = activation_time if activation_time is not None else datetime.utcnow()
 
@@ -377,7 +467,8 @@ def update_anchor(
     elif payload.expiration_time is not None:
         fields["expiration_time"] = payload.expiration_time
     if payload.tags is not None:
-        fields["tags"] = json.dumps(payload.tags)
+        normalized_tags = _normalize_stored_tags(payload.tags)
+        fields["tags"] = json.dumps(normalized_tags) if normalized_tags else None
 
     # Handle partial location update — if only lat or only lon is provided,
     # fall back to the existing value for the other coordinate
@@ -535,9 +626,10 @@ def unlock_anchor(
 
 @router.get("/", response_model=List[AnchorResponse])
 def get_all_anchors(
-    visibility: Optional[str] = Query(None, description="Filter by visibility: PUBLIC, PRIVATE, CIRCLE_ONLY"),
-    anchor_status: Optional[str] = Query(None, alias="anchor_status", description="Filter by status: ACTIVE, EXPIRED, LOCKED, FLAGGED"),
+    visibility: Optional[List[str]] = Query(None, description="Filter by visibility: PUBLIC, PRIVATE, CIRCLE_ONLY"),
+    anchor_status: Optional[List[str]] = Query(None, alias="anchor_status", description="Filter by status: ACTIVE, EXPIRED, LOCKED, FLAGGED"),
     content_type: Optional[List[str]] = Query(None, description="Filter by content type: TEXT, FILE, LINK"),
+    tags: Optional[List[str]] = Query(None, description="Filter by tags; matches any selected tag"),
     user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
@@ -551,6 +643,7 @@ def get_all_anchors(
         visibility=visibility,
         anchor_status=anchor_status,
         content_type=content_type,
+        tags=tags,
     )
 
     rows = db.execute(
@@ -579,15 +672,105 @@ def get_all_anchors(
     return results
 
 
+@router.get("/nearby/filter-options", response_model=AnchorFilterOptionsResponse)
+def get_nearby_anchor_filter_options(
+    lat: float = Query(..., description="User's current latitude"),
+    lon: float = Query(..., description="User's current longitude"),
+    radius_km: float = Query(5.0, description="Search radius in kilometers"),
+    visibility: Optional[List[str]] = Query(None, description="Filter by visibility: PUBLIC, PRIVATE, CIRCLE_ONLY"),
+    anchor_status: Optional[List[str]] = Query(None, alias="anchor_status", description="Filter by status: ACTIVE, EXPIRED, LOCKED, FLAGGED"),
+    content_type: Optional[List[str]] = Query(None, description="Filter by content type: TEXT, FILE, LINK"),
+    tags: Optional[List[str]] = Query(None, description="Filter by tags; matches any selected tag"),
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Return available nearby filter options with counts for the current search area.
+    Uses the same base location and active-window constraints as nearby discovery.
+    """
+    del user_id
+
+    params = {
+        "radius_m": radius_km * 1000,
+        "user_point": f"POINT({lon} {lat})",
+    }
+    filters = """
+        AND (a.activation_time IS NULL OR a.activation_time <= UTC_TIMESTAMP())
+        AND (a.expiration_time IS NULL OR a.expiration_time >= UTC_TIMESTAMP())
+    """
+    extra_filters, extra_params = _build_anchor_filters(
+        table_alias="a",
+        visibility=visibility,
+        anchor_status=anchor_status,
+        content_type=content_type,
+        tags=tags,
+    )
+    filters += extra_filters
+    params.update(extra_params)
+
+    rows = db.execute(
+        text(f"""
+            SELECT
+                a.status,
+                a.visibility,
+                a.tags,
+                (
+                    SELECT GROUP_CONCAT(DISTINCT c.content_type ORDER BY c.content_type SEPARATOR ',')
+                    FROM Content c
+                    WHERE c.anchor_id = a.anchor_id
+                ) AS content_type
+            FROM anchors a
+            WHERE ST_Distance_Sphere(
+                a.location,
+                ST_GeomFromText(:user_point, 4326)
+            ) <= :radius_m
+            {filters}
+        """),
+        params,
+    ).fetchall()
+
+    visibility_counts: Counter = Counter()
+    status_counts: Counter = Counter()
+    content_type_counts: Counter = Counter()
+    tag_counts: Counter = Counter()
+
+    for row in rows:
+        visibility_counts[row.visibility] += 1
+        status_counts[row.status] += 1
+        for item in _parse_content_types(getattr(row, "content_type", None)) or []:
+            content_type_counts[item] += 1
+        for tag in _parse_tags(row.tags) or []:
+            normalized_tag = tag.strip().lower()
+            if normalized_tag:
+                tag_counts[normalized_tag] += 1
+
+    return AnchorFilterOptionsResponse(
+        visibility=_serialize_filter_counts(
+            visibility_counts,
+            order=["PUBLIC", "CIRCLE_ONLY", "PRIVATE"],
+        ),
+        anchor_status=_serialize_filter_counts(
+            status_counts,
+            order=["ACTIVE", "LOCKED", "EXPIRED", "FLAGGED"],
+        ),
+        content_type=_serialize_filter_counts(
+            content_type_counts,
+            order=["TEXT", "FILE", "LINK"],
+        ),
+        tags=_serialize_filter_counts(tag_counts),
+    )
+
+
 @router.get("/nearby", response_model=List[AnchorResponse])
 def get_nearby_anchors(
     lat: float = Query(..., description="User's current latitude"),
     lon: float = Query(..., description="User's current longitude"),
     radius_km: float = Query(5.0, description="Search radius in kilometers"),
-    visibility: Optional[str] = Query(None, description="Filter by visibility: PUBLIC, PRIVATE, CIRCLE_ONLY"),
+    visibility: Optional[List[str]] = Query(None, description="Filter by visibility: PUBLIC, PRIVATE, CIRCLE_ONLY"),
     # Named anchor_status (not status) to avoid shadowing fastapi.status module
-    anchor_status: Optional[str] = Query(None, alias="anchor_status", description="Filter by status: ACTIVE, EXPIRED, LOCKED, FLAGGED"),
+    anchor_status: Optional[List[str]] = Query(None, alias="anchor_status", description="Filter by status: ACTIVE, EXPIRED, LOCKED, FLAGGED"),
     content_type: Optional[List[str]] = Query(None, description="Filter by content type: TEXT, FILE, LINK"),
+    tags: Optional[List[str]] = Query(None, description="Filter by tags; matches any selected tag"),
     sort_by: str = Query("distance", description="Sort by: distance or created_at"),
     user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
@@ -627,6 +810,7 @@ def get_nearby_anchors(
         visibility=visibility,
         anchor_status=anchor_status,
         content_type=content_type,
+        tags=tags,
     )
     filters += extra_filters
     params.update(extra_params)

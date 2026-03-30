@@ -71,3 +71,17 @@ class AnchorResponse(BaseModel):
     # Distinct content types attached to this anchor (TEXT, FILE, LINK)
     content_type: Optional[List[str]] = None
     tags: Optional[List[str]] = None
+
+
+class AnchorFilterOption(BaseModel):
+    """Single filter option plus how many nearby anchors match it."""
+    value: str
+    count: int
+
+
+class AnchorFilterOptionsResponse(BaseModel):
+    """Available nearby filter options for discovery."""
+    visibility: List[AnchorFilterOption]
+    anchor_status: List[AnchorFilterOption]
+    content_type: List[AnchorFilterOption]
+    tags: List[AnchorFilterOption]

@@ -54,7 +54,14 @@ def auth_headers(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
-def create_anchor(token: str, title: str, lat: float, lon: float, visibility: str = "PUBLIC"):
+def create_anchor(
+    token: str,
+    title: str,
+    lat: float,
+    lon: float,
+    visibility: str = "PUBLIC",
+    tags: list[str] | None = None,
+):
     """Helper to create a test anchor. Uses always_active=True to avoid time-based failures."""
     payload = {
         "title": title,
@@ -66,7 +73,7 @@ def create_anchor(token: str, title: str, lat: float, lon: float, visibility: st
         "unlock_radius": 50,
         "max_unlock": None,
         "always_active": True,
-        "tags": [],
+        "tags": tags or [],
     }
     response = client.post("/anchors/", json=payload, headers=auth_headers(token))
     assert response.status_code == 201
@@ -89,6 +96,18 @@ def attach_content(anchor_id: str, content_type: str):
                 "content_type": content_type,
                 "size_bytes": 128,
             },
+        )
+        db.commit()
+    finally:
+        db.close()
+
+
+def update_anchor_status(anchor_id: str, status: str):
+    db = SessionLocal()
+    try:
+        db.execute(
+            text("UPDATE anchors SET status = :status WHERE anchor_id = :anchor_id"),
+            {"status": status, "anchor_id": anchor_id},
         )
         db.commit()
     finally:
@@ -240,6 +259,143 @@ class TestNearbyAnchors:
             headers=auth_headers(token),
         )
         assert response.status_code == 400
+
+    def test_filter_by_tags(self):
+        """Filter returns anchors matching any selected tag."""
+        token = get_token()
+        music_anchor = create_anchor(
+            token,
+            "Music Tag Anchor",
+            lat=40.4237,
+            lon=-86.9212,
+            tags=["music", "chill"],
+        )
+        study_anchor = create_anchor(
+            token,
+            "Study Tag Anchor",
+            lat=40.4238,
+            lon=-86.9213,
+            tags=["study"],
+        )
+
+        response = client.get(
+            "/anchors/nearby",
+            params=[
+                ("lat", 40.4237),
+                ("lon", -86.9212),
+                ("radius_km", 50),
+                ("tags", "music"),
+            ],
+            headers=auth_headers(token),
+        )
+        assert response.status_code == 200
+        anchors = response.json()
+        assert any(anchor["anchor_id"] == music_anchor["anchor_id"] for anchor in anchors)
+        assert all(anchor["anchor_id"] != study_anchor["anchor_id"] for anchor in anchors)
+        assert all("music" in [tag.lower() for tag in (anchor.get("tags") or [])] for anchor in anchors)
+
+    def test_filter_by_multiple_visibility_values(self):
+        """Repeated visibility filters return anchors from either visibility bucket."""
+        token = get_token()
+        public_anchor = create_anchor(token, "Multi Public", lat=40.4237, lon=-86.9212, visibility="PUBLIC")
+        private_anchor = create_anchor(token, "Multi Private", lat=40.4238, lon=-86.9213, visibility="PRIVATE")
+
+        response = client.get(
+            "/anchors/nearby",
+            params=[
+                ("lat", 40.4237),
+                ("lon", -86.9212),
+                ("radius_km", 50),
+                ("visibility", "PUBLIC"),
+                ("visibility", "PRIVATE"),
+            ],
+            headers=auth_headers(token),
+        )
+        assert response.status_code == 200
+        anchors = response.json()
+        anchor_ids = {anchor["anchor_id"] for anchor in anchors}
+        assert public_anchor["anchor_id"] in anchor_ids
+        assert private_anchor["anchor_id"] in anchor_ids
+        assert all(anchor["visibility"] in {"PUBLIC", "PRIVATE"} for anchor in anchors)
+
+    def test_filter_by_locked_status(self):
+        """Status filter can return non-active anchors that are still in the current time window."""
+        token = get_token()
+        locked_anchor = create_anchor(token, "Locked Status Anchor", lat=40.4237, lon=-86.9212)
+        update_anchor_status(locked_anchor["anchor_id"], "LOCKED")
+
+        response = client.get(
+            "/anchors/nearby",
+            params={
+                "lat": 40.4237,
+                "lon": -86.9212,
+                "radius_km": 50,
+                "anchor_status": "LOCKED",
+            },
+            headers=auth_headers(token),
+        )
+        assert response.status_code == 200
+        anchors = response.json()
+        assert any(anchor["anchor_id"] == locked_anchor["anchor_id"] for anchor in anchors)
+        assert all(anchor["status"] == "LOCKED" for anchor in anchors)
+
+    def test_filter_by_multiple_content_types(self):
+        """Repeated content_type filters match anchors with any requested content type."""
+        token = get_token()
+        text_anchor = create_anchor(token, "Multi Text Anchor", lat=40.4237, lon=-86.9212)
+        file_anchor = create_anchor(token, "Multi File Anchor", lat=40.4238, lon=-86.9213)
+        attach_content(text_anchor["anchor_id"], "TEXT")
+        attach_content(file_anchor["anchor_id"], "FILE")
+
+        response = client.get(
+            "/anchors/nearby",
+            params=[
+                ("lat", 40.4237),
+                ("lon", -86.9212),
+                ("radius_km", 50),
+                ("content_type", "TEXT"),
+                ("content_type", "FILE"),
+            ],
+            headers=auth_headers(token),
+        )
+        assert response.status_code == 200
+        anchors = response.json()
+        anchor_ids = {anchor["anchor_id"] for anchor in anchors}
+        assert text_anchor["anchor_id"] in anchor_ids
+        assert file_anchor["anchor_id"] in anchor_ids
+        assert all(
+            any(content_type in {"TEXT", "FILE"} for content_type in (anchor.get("content_type") or []))
+            for anchor in anchors
+        )
+
+    def test_nearby_filter_options_returns_available_counts(self):
+        """Filter options endpoint returns nearby tag and enum counts."""
+        token = get_token()
+        options_anchor = create_anchor(
+            token,
+            "Options Route Anchor",
+            lat=40.4237,
+            lon=-86.9212,
+            visibility="PRIVATE",
+            tags=["rare-filter-tag"],
+        )
+        attach_content(options_anchor["anchor_id"], "LINK")
+
+        response = client.get(
+            "/anchors/nearby/filter-options",
+            params={"lat": 40.4237, "lon": -86.9212, "radius_km": 50},
+            headers=auth_headers(token),
+        )
+        assert response.status_code == 200
+        payload = response.json()
+
+        tag_counts = {item["value"]: item["count"] for item in payload["tags"]}
+        visibility_counts = {item["value"]: item["count"] for item in payload["visibility"]}
+        content_counts = {item["value"]: item["count"] for item in payload["content_type"]}
+
+        assert tag_counts["rare-filter-tag"] >= 1
+        assert visibility_counts["PRIVATE"] >= 1
+        assert content_counts["LINK"] >= 1
 
     def test_no_results_outside_radius(self):
         """Returns empty list when no anchors are within radius."""
