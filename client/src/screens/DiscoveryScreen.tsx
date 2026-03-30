@@ -112,6 +112,12 @@ function formatVisibility(value: NearbyAnchor["visibility"]) {
   return "Public";
 }
 
+function formatDistance(meters: number | null): string {
+  if (meters === null) return "- km";
+  if (meters < 1000) return `${Math.round(meters)}m`;
+  return `${(meters / 1000).toFixed(1)}km`;
+}
+
 function getLockMeta(anchor: NearbyAnchor) {
   if (anchor.status !== "ACTIVE") {
     return {
@@ -144,14 +150,23 @@ function AnchorRowCard({
 }) {
   return (
     <Pressable
-      style={[styles.anchorCard, isSelected && styles.anchorCardSelected]}
+      style={[
+        styles.anchorCard,
+        isSelected && styles.anchorCardSelected,
+        !anchor.isWithinRadius && styles.anchorCardOutOfRange,
+      ]}
       onPress={onPress}
     >
       <View style={styles.anchorRowTop}>
         <Text style={styles.anchorTitle} numberOfLines={1}>
           {anchor.title}
         </Text>
-        {anchor.primaryTag ? (
+        {!anchor.isWithinRadius ? (
+          <View style={styles.outOfRangePill}>
+            <Feather name="navigation" size={10} color={colors.lightMuted} />
+            <Text style={styles.outOfRangePillText}>Out of range</Text>
+          </View>
+        ) : anchor.primaryTag ? (
           <View style={styles.tagPill}>
             <Text style={styles.tagPillText}>{anchor.primaryTag}</Text>
           </View>
@@ -160,12 +175,8 @@ function AnchorRowCard({
 
       <View style={styles.anchorRowMiddle}>
         <View style={styles.infoChip}>
-          <Feather
-            name="map-pin"
-            size={13}
-            color={colors.muted}
-          />
-          <Text style={styles.infoChipText}>{"- km"}</Text>
+          <Feather name="map-pin" size={13} color={colors.muted} />
+          <Text style={styles.infoChipText}>{formatDistance(anchor.distanceMeters)}</Text>
         </View>
         <View
           style={[
@@ -596,6 +607,7 @@ export default function DiscoveryScreen() {
                 style={[
                   styles.mapMarker,
                   isSelected && styles.mapMarkerSelected,
+                  !anchor.isWithinRadius && styles.mapMarkerOutOfRange,
                 ]}
               >
                 <View style={[
@@ -1760,6 +1772,25 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: 13,
     fontWeight: "600",
+  },
+  anchorCardOutOfRange: {
+    opacity: 0.5,
+  },
+  outOfRangePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: "#f3f4f6",
+    borderRadius: 999,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  outOfRangePillText: {
+    fontSize: 11,
+    color: colors.lightMuted,
+  },
+  mapMarkerOutOfRange: {
+    opacity: 0.4,
   },
   reportButton: {
     flexDirection: "row",
