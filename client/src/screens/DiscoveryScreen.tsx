@@ -1082,6 +1082,20 @@ export default function DiscoveryScreen() {
                 </View>
               </View>
 
+              {!selectedAnchor.isWithinRadius ? (
+                <View style={styles.proximityBanner}>
+                  <Feather name="navigation" size={14} color={colors.muted} />
+                  <Text style={styles.proximityBannerText}>
+                    You're {formatDistance(selectedAnchor.distanceMeters)} away — move within {selectedAnchor.unlock_radius}m to unlock
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.proximityBannerInRange}>
+                  <Feather name="check-circle" size={14} color={colors.success} />
+                  <Text style={styles.proximityBannerInRangeText}>You're within range</Text>
+                </View>
+              )}
+
               <View style={styles.detailInfoGrid}>
                 <View style={styles.detailInfoItem}>
                    <View style={styles.detailInfoIconSection}>
@@ -2009,6 +2023,36 @@ const styles = StyleSheet.create({
   ghostModeBannerText: {
     color: colors.white,
     fontSize: 13,
+    fontWeight: "600",
+  },
+  proximityBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#f3f4f6",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  proximityBannerText: {
+    flex: 1,
+    fontSize: 13,
+    color: colors.muted,
+  },
+  proximityBannerInRange: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#ecfdf5",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  proximityBannerInRangeText: {
+    fontSize: 13,
+    color: colors.success,
     fontWeight: "600",
   },
   anchorCardOutOfRange: {
