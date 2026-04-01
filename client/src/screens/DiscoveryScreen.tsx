@@ -30,6 +30,7 @@ import * as DocumentPicker from 'expo-document-picker';
 
 import { useAuth } from "../context/AuthContext";
 import type { RootStackParamList } from "../navigation/AppNavigator";
+import { canAccessAdminDashboard } from "../services/adminService";
 import {
   getNearbyAnchorFilterOptions,
   getNearbyAnchors,
@@ -282,6 +283,7 @@ export default function DiscoveryScreen() {
   const [radius, setRadius] = useState(50);
 
   const [isGhostMode, setIsGhostMode] = useState(false);
+  const [canViewAdminDashboard, setCanViewAdminDashboard] = useState(false);
 
 
 
@@ -496,6 +498,21 @@ export default function DiscoveryScreen() {
       }
     };
     void loadGhostMode();
+  }, [session?.access_token]);
+
+  useEffect(() => {
+    const token = session?.access_token;
+    if (!token) {
+      setCanViewAdminDashboard(false);
+      return;
+    }
+
+    const checkAdminAccess = async () => {
+      const canAccess = await canAccessAdminDashboard(token);
+      setCanViewAdminDashboard(canAccess);
+    };
+
+    void checkAdminAccess();
   }, [session?.access_token]);
 
   useEffect(() => {
@@ -887,13 +904,23 @@ export default function DiscoveryScreen() {
                   style={styles.searchInput}
                 />
               </View>
-              <TouchableOpacity
-                testID="open-profile-button"
-                style={styles.profileButton}
-                onPress={() => navigation.navigate("EditProfile")}
-              >
-                <Text style={styles.profileInitial}>{profileInitial}</Text>
-              </TouchableOpacity>
+              <View style={styles.topBarActions}>
+                {canViewAdminDashboard ? (
+                  <TouchableOpacity
+                    style={styles.adminButton}
+                    onPress={() => navigation.navigate("AdminDashboard")}
+                  >
+                    <Feather name="shield" size={18} color={colors.accentPink} />
+                  </TouchableOpacity>
+                ) : null}
+                <TouchableOpacity
+                  testID="open-profile-button"
+                  style={styles.profileButton}
+                  onPress={() => navigation.navigate("EditProfile")}
+                >
+                  <Text style={styles.profileInitial}>{profileInitial}</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             {isGhostMode && (
@@ -1424,6 +1451,21 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     color: colors.text,
+  },
+  topBarActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  adminButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
   },
   profileButton: {
     width: 44,

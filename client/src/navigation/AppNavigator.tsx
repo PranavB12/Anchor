@@ -14,6 +14,9 @@ import EditAnchor from "../screens/EditAnchor";
 import ForgotPasswordScreen from "../screens/ForgotPasswordScreen";
 import ResetPasswordScreen from "../screens/ResetPasswordScreen";
 import EditProfileScreen from "../screens/EditProfileScreen";
+import AdminDashboardScreen from "../screens/AdminDashboardScreen";
+import AdminUserProfileScreen from "../screens/AdminUserProfileScreen";
+import type { AdminUserSummary } from "../services/adminService";
 
 export type RootStackParamList = {
   Login: undefined;
@@ -26,6 +29,8 @@ export type RootStackParamList = {
   AnchorPreview: { draft: AnchorDraft };
   EditAnchor: { anchor: NearbyAnchor; radius: number };
   EditProfile: undefined;
+  AdminDashboard: undefined;
+  AdminUserProfile: { user: AdminUserSummary };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -75,6 +80,8 @@ export default function AppNavigator() {
             <Stack.Screen name="AnchorCreation" component={AnchorCreation} options={{ title: "Anchor Details" }} />
             <Stack.Screen name="AnchorPreview" component={AnchorPreviewScreen} options={{ title: "Preview Anchor" }} />
             <Stack.Screen name="EditProfile" component={EditProfileScreen} options={{ title: "Edit Profile" }} />
+            <Stack.Screen name="AdminDashboard" component={AdminDashboardScreen} options={{ title: "Admin Dashboard" }} />
+            <Stack.Screen name="AdminUserProfile" component={AdminUserProfileScreen} options={{ title: "Admin User Profile" }} />
             <Stack.Screen
               name="EditAnchor"
               component={EditAnchor}
