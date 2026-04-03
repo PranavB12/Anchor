@@ -9,6 +9,8 @@ import {
   Text,
   TextInput,
   View,
+  Platform,
+  StatusBar,
 } from "react-native";
 
 import { useAuth } from "../context/AuthContext";
@@ -93,7 +95,9 @@ export default function AdminDashboardScreen({ navigation }: Props) {
             <Text style={styles.backButtonText}>Back</Text>
           </Pressable>
           <Text style={styles.title}>Admin Dashboard</Text>
-          <View style={styles.backButtonPlaceholder} />
+          <Pressable onPress={() => navigation.navigate("AdminAuditLogs")} style={styles.actionButton}>
+            <Text style={styles.actionButtonText}>Logs</Text>
+          </Pressable>
         </View>
 
         <View style={styles.heroCard}>
@@ -214,6 +218,7 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: colors.canvas,
+    paddingTop: Platform.OS === "android" ? StatusBar.currentHeight : 0,
   },
   screen: {
     flex: 1,
@@ -236,6 +241,15 @@ const styles = StyleSheet.create({
   },
   backButtonPlaceholder: {
     minWidth: 56,
+  },
+  actionButton: {
+    minWidth: 56,
+    alignItems: "flex-end",
+  },
+  actionButtonText: {
+    color: colors.accentPink,
+    fontSize: 15,
+    fontWeight: "700",
   },
   title: {
     color: colors.text,

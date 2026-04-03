@@ -18,9 +18,10 @@ from collections import Counter
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Tuple
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Request
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+from app.core.audit import log_action
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user_id
@@ -300,6 +301,7 @@ def _to_utc_naive(dt: Optional[datetime]) -> Optional[datetime]:
 @router.post("/", response_model=AnchorResponse, status_code=status.HTTP_201_CREATED)
 def create_anchor(
     payload: CreateAnchorRequest,
+    request: Request,
     user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
@@ -369,6 +371,7 @@ def create_anchor(
 
     # Re-fetch the inserted row to return the full response with all fields
     row = _get_anchor_by_id(db, anchor_id)
+    log_action(db, user_id, "ANCHOR_CREATE", target_id=anchor_id, target_type="ANCHOR", request=request)
     return _row_to_response(row)
 
 
@@ -378,6 +381,7 @@ def create_anchor(
 def update_anchor(
     anchor_id: str,
     payload: UpdateAnchorRequest,
+    request: Request,
     user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
@@ -483,6 +487,7 @@ def update_anchor(
         db.commit()
 
     updated = _get_anchor_by_id(db, anchor_id)
+    log_action(db, user_id, "ANCHOR_EDIT", target_id=anchor_id, target_type="ANCHOR", request=request)
     return _row_to_response(updated)
 
 
@@ -491,6 +496,7 @@ def update_anchor(
 @router.delete("/{anchor_id}", status_code=status.HTTP_200_OK)
 def delete_anchor(
     anchor_id: str,
+    request: Request,
     user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
@@ -516,6 +522,7 @@ def delete_anchor(
         {"anchor_id": anchor_id},
     )
     db.commit()
+    log_action(db, user_id, "ANCHOR_DELETE", target_id=anchor_id, target_type="ANCHOR", request=request)
     return {"message": "Anchor deleted successfully"}
 
 
@@ -524,6 +531,7 @@ def delete_anchor(
 @router.post("/{anchor_id}/unlock", status_code=status.HTTP_200_OK)
 def unlock_anchor(
     anchor_id: str,
+    request: Request,
     user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
@@ -604,6 +612,8 @@ def unlock_anchor(
             {"anchor_id": anchor_id},
         )
         db.commit()
+
+    log_action(db, user_id, "ANCHOR_UNLOCK", target_id=anchor_id, target_type="ANCHOR", request=request)
 
     return {
         "message": "Anchor unlocked successfully",

@@ -5,6 +5,8 @@ Endpoints:
 """
 
 from datetime import datetime, timezone
+from typing import Optional
+import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import text
@@ -12,7 +14,12 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user_id
-from app.schemas.admin import AdminReportResponse, ResolveReportRequest
+from app.schemas.admin import (
+    AdminReportResponse, 
+    ResolveReportRequest, 
+    AuditLogResponse, 
+    AuditLogsPaginatedResponse
+)
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -129,3 +136,78 @@ def resolve_report(
     db.commit()
 
     return {"message": f"Report {new_status.lower()}", "report_id": report_id, "anchor_deleted": body.delete_anchor}
+
+@router.get("/audit-logs", response_model=AuditLogsPaginatedResponse)
+def get_audit_logs(
+    action_type: Optional[str] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    limit: int = 100,
+    offset: int = 0,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    _require_admin(user_id, db)
+
+    where_clauses = ["1=1"]
+    params = {}
+
+    if action_type:
+        where_clauses.append("al.action_type = :action_type")
+        params["action_type"] = action_type
+
+    if start_date:
+        where_clauses.append("al.timestamp >= :start_date")
+        params["start_date"] = start_date
+
+    if end_date:
+        where_clauses.append("al.timestamp <= :end_date")
+        params["end_date"] = end_date
+
+    where_str = " AND ".join(where_clauses)
+    
+    count_query = f"SELECT COUNT(*) as total_count FROM audit_logs al WHERE {where_str}"
+    total_count = db.execute(text(count_query), params).scalar()
+
+    query = f"""
+        SELECT 
+            al.log_id, al.user_id, u.username, u.email,
+            al.action_type, al.target_id, al.target_type,
+            al.metadata, al.ip_address, al.timestamp
+        FROM audit_logs al
+        JOIN users u ON al.user_id = u.user_id
+        WHERE {where_str}
+        ORDER BY al.timestamp DESC
+        LIMIT :limit OFFSET :offset
+    """
+    data_params = params.copy()
+    data_params["limit"] = limit
+    data_params["offset"] = offset
+
+    rows = db.execute(text(query), data_params).fetchall()
+
+    def parse_metadata(m):
+        if not m: return None
+        if isinstance(m, dict): return m
+        try:
+            return json.loads(m)
+        except Exception:
+            return None
+
+    logs = [
+        AuditLogResponse(
+            log_id=row.log_id,
+            user_id=row.user_id,
+            username=row.username,
+            email=row.email,
+            action_type=row.action_type,
+            target_id=row.target_id,
+            target_type=row.target_type,
+            metadata=parse_metadata(row.metadata),
+            ip_address=row.ip_address,
+            timestamp=row.timestamp,
+        )
+        for row in rows
+    ]
+
+    return AuditLogsPaginatedResponse(logs=logs, total_count=total_count)

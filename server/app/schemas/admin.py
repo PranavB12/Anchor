@@ -24,3 +24,19 @@ class AdminReportResponse(BaseModel):
 class ResolveReportRequest(BaseModel):
     action: str          # DISMISS | ACTION
     delete_anchor: bool = False
+
+class AuditLogResponse(BaseModel):
+    log_id: str
+    user_id: str
+    username: str
+    email: str
+    action_type: str
+    target_id: Optional[str]
+    target_type: Optional[str]
+    metadata: Optional[dict]
+    ip_address: Optional[str]
+    timestamp: datetime
+
+class AuditLogsPaginatedResponse(BaseModel):
+    logs: list[AuditLogResponse]
+    total_count: int

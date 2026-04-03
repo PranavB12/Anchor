@@ -24,6 +24,24 @@ type BanUserResponse = {
   message?: string;
 };
 
+export type AuditLog = {
+  log_id: string;
+  user_id: string;
+  username: string;
+  email: string;
+  action_type: string;
+  target_id: string | null;
+  target_type: string | null;
+  metadata: Record<string, unknown> | null;
+  ip_address: string | null;
+  timestamp: string;
+};
+
+export type AuditLogsPaginatedResponse = {
+  logs: AuditLog[];
+  total_count: number;
+};
+
 export async function canAccessAdminDashboard(token: string) {
   try {
     await apiRequest<AdminReportsProbe[]>("/admin/reports?status=PENDING", {
@@ -75,4 +93,28 @@ export async function updateAdminUserBanStatus(
     is_banned: response.is_banned ?? isBanned,
     message: response.message,
   };
+}
+
+export async function fetchAuditLogs(
+  token: string,
+  filters?: {
+    action_type?: string;
+    start_date?: string;
+    end_date?: string;
+    limit?: number;
+    offset?: number;
+  }
+) {
+  const params = new URLSearchParams();
+  if (filters?.action_type) params.append("action_type", filters.action_type);
+  if (filters?.start_date) params.append("start_date", filters.start_date);
+  if (filters?.end_date) params.append("end_date", filters.end_date);
+  if (filters?.limit) params.append("limit", filters.limit.toString());
+  if (filters?.offset) params.append("offset", filters.offset.toString());
+
+  const queryParams = params.toString() ? `?${params.toString()}` : "";
+  return await apiRequest<AuditLogsPaginatedResponse>(`/admin/audit-logs${queryParams}`, {
+    method: "GET",
+    token,
+  });
 }

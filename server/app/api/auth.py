@@ -20,9 +20,10 @@ from datetime import datetime, timedelta
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+from app.core.audit import log_action
 
 from app.core.config import settings
 from app.core.database import get_db
@@ -268,7 +269,7 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
 # ── Login ─────────────────────────────────────────────────────────────────────
 
 @router.post("/login", response_model=LoginResponse)
-def login(payload: LoginRequest, db: Session = Depends(get_db)):
+def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)):
     """
     Login with email and password.
     Acceptance criteria: valid credentials return tokens for authenticated app flow.
@@ -296,6 +297,8 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
     refresh_token = create_refresh_token(user.user_id)
     _create_session(db, user.user_id, refresh_token)
     _update_last_login(db, user.user_id)
+
+    log_action(db, user.user_id, "LOGIN", request=request)
 
     return LoginResponse(
         user_id=user.user_id,
@@ -482,13 +485,18 @@ def verify_token(
 # ── Logout ────────────────────────────────────────────────────────────────────
 
 @router.post("/logout", status_code=status.HTTP_200_OK)
-def logout(payload: LogoutRequest, db: Session = Depends(get_db)):
+def logout(payload: LogoutRequest, request: Request, db: Session = Depends(get_db)):
     """
     Revoke the refresh token / session.
     Acceptance criteria: tokens removed and invalidated, 401 on protected routes after logout.
     The access token will expire naturally — only the refresh token is explicitly revoked.
     """
+    user_id = decode_refresh_token(payload.refresh_token)
     _revoke_session(db, payload.refresh_token)
+    
+    if user_id:
+        log_action(db, user_id, "LOGOUT", request=request)
+        
     return {"message": "Successfully logged out"}
 
 
@@ -549,6 +557,7 @@ def request_password_reset(payload: PasswordResetRequest, db: Session = Depends(
 @router.post("/password-reset/confirm", response_model=MessageResponse)
 def confirm_password_reset(
     payload: PasswordResetConfirmRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """
@@ -592,5 +601,7 @@ def confirm_password_reset(
 
     # Revoke all active sessions — user must log in again with new password
     _revoke_all_sessions_for_user(db, user.user_id)
+
+    log_action(db, user.user_id, "PASSWORD_RESET", request=request)
 
     return MessageResponse(message="Password reset successful")

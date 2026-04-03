@@ -120,6 +120,21 @@ CREATE TABLE IF NOT EXISTS unlocked_anchors (
     FOREIGN KEY (anchor_id) REFERENCES anchors(anchor_id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS audit_logs (
+    log_id          CHAR(36)        PRIMARY KEY,
+    user_id         CHAR(36)        NOT NULL,
+    action_type     VARCHAR(50)     NOT NULL,
+    target_id       CHAR(36)        NULL,
+    target_type     VARCHAR(50)     NULL,
+    metadata        JSON            NULL,
+    ip_address      VARCHAR(45)     NULL,
+    timestamp       DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+    INDEX idx_audit_user (user_id),
+    INDEX idx_audit_action (action_type)
+);
+
 -- ---------------------------------------------------------------------------
 -- Seed data for local development
 -- ---------------------------------------------------------------------------
