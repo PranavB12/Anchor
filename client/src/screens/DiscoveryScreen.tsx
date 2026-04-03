@@ -507,7 +507,11 @@ export default function DiscoveryScreen({ route }: Props) {
       if (!session?.access_token) return;
       try {
         const profile = await getProfile(session.access_token);
-        setIsGhostMode(profile.is_ghost_mode ?? false);
+        const ghostMode = profile.is_ghost_mode ?? false;
+        setIsGhostMode(ghostMode);
+        if (ghostMode) {
+          setUserCoordinate(null);
+        }
       } catch {
       }
     };
@@ -823,6 +827,10 @@ export default function DiscoveryScreen({ route }: Props) {
   }, []);
 
   const handleDropAnchor = async () => {
+    if (isGhostMode) {
+      Alert.alert("Ghost Mode is on", "Disable Ghost Mode to drop an anchor.");
+      return;
+    }
     let { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('Permission Denied', 'Allow location access to drop an anchor.');
