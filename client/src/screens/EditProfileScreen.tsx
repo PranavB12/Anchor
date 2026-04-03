@@ -20,6 +20,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import type { RootStackParamList } from "../navigation/AppNavigator";
 import { useAuth } from "../context/AuthContext";
 import { getProfile, updateProfile } from "../services/authService";
+import {
+  setGhostModeBackgroundState,
+  startBackgroundLocationTracking,
+  stopBackgroundLocationTracking,
+} from "../services/locationTask";
 
 type Props = NativeStackScreenProps<RootStackParamList, "EditProfile">;
 
@@ -75,7 +80,7 @@ export default function EditProfileScreen({ navigation }: Props) {
     setIsSubmitting(true);
 
     try {
-      await updateProfile(
+      const updatedProfile = await updateProfile(
         {
           username: username.trim(),
           email: email.trim(),
@@ -85,6 +90,13 @@ export default function EditProfileScreen({ navigation }: Props) {
         },
         session!.access_token,
       );
+      const nextGhostMode = updatedProfile.is_ghost_mode ?? isGhostMode;
+      await setGhostModeBackgroundState(nextGhostMode);
+      if (nextGhostMode) {
+        await stopBackgroundLocationTracking();
+      } else {
+        await startBackgroundLocationTracking();
+      }
       Alert.alert("Success", "Profile updated successfully.", [
         { text: "OK", onPress: () => navigation.goBack() },
       ]);

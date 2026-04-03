@@ -7,10 +7,14 @@ import { getNearbyAnchors, unlockAnchor } from './anchorService';
 import { getDistanceFromLatLonInM } from '../utils/distance';
 
 export const LOCATION_TASK_NAME = 'background-location-task';
+export const GHOST_MODE_STORAGE_KEY = 'anchor.user.ghost_mode.v1';
+const AUTH_SESSION_STORAGE_KEY = 'anchor.auth.session.v1';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
     shouldPlaySound: false,
     shouldSetBadge: false,
   }),
@@ -30,6 +34,12 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
     return;
   }
   if (data) {
+    const ghostModeEnabled = (await AsyncStorage.getItem(GHOST_MODE_STORAGE_KEY)) === 'true';
+    if (ghostModeEnabled) {
+      console.log("[BG_TASK] Ghost mode is enabled. Skipping background location work.");
+      return;
+    }
+
     const { locations } = data as { locations: Location.LocationObject[] };
     const location = locations[0];
     if (!location) return;
@@ -48,7 +58,7 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
     }
 
     try {
-      const sessionStr = await AsyncStorage.getItem("anchor.auth.session.v1");
+      const sessionStr = await AsyncStorage.getItem(AUTH_SESSION_STORAGE_KEY);
       if (!sessionStr) return;
       const session = JSON.parse(sessionStr);
       if (!session?.access_token) return;
@@ -102,7 +112,28 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
   }
 });
 
+export async function setGhostModeBackgroundState(isGhostMode: boolean) {
+  await AsyncStorage.setItem(GHOST_MODE_STORAGE_KEY, String(isGhostMode));
+}
+
+export async function stopBackgroundLocationTracking() {
+  const hasStarted = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
+  if (!hasStarted) return;
+
+  await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
+}
+
 export async function startBackgroundLocationTracking() {
+  const ghostModeEnabled = (await AsyncStorage.getItem(GHOST_MODE_STORAGE_KEY)) === 'true';
+  if (ghostModeEnabled) {
+    await stopBackgroundLocationTracking();
+    console.log("Ghost mode is enabled. Background tracking will remain off.");
+    return;
+  }
+
+  const hasStarted = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
+  if (hasStarted) return;
+
   console.log("Checking permissions for completely revamped background task...");
   const { status: fg } = await Location.requestForegroundPermissionsAsync();
   if (fg !== 'granted') return;
@@ -114,7 +145,7 @@ export async function startBackgroundLocationTracking() {
   try {
     await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
       accuracy: Location.Accuracy.Highest,
-      distanceInterval: 1,
+      distanceInterval: 10,
       timeInterval: 2000,
       deferredUpdatesInterval: 2000,
       showsBackgroundLocationIndicator: true, // Must be true on Android

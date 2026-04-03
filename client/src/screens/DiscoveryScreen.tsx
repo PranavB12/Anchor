@@ -1,5 +1,5 @@
 import { Feather } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import Mapbox from "@rnmapbox/maps";
 import * as Location from "expo-location";
@@ -48,6 +48,11 @@ import {
   type AnchorAttachment,
 } from "../services/anchorService";
 import ReportAnchorModal from "../components/ReportAnchorModal";
+import {
+  setGhostModeBackgroundState,
+  startBackgroundLocationTracking,
+  stopBackgroundLocationTracking,
+} from "../services/locationTask";
 import { getDistanceFromLatLonInM } from "../utils/distance";
 import circle from "@turf/circle";
 import Slider from "@react-native-community/slider";
@@ -301,6 +306,46 @@ export default function DiscoveryScreen({ route }: Props) {
   const [canViewAdminDashboard, setCanViewAdminDashboard] = useState(false);
 
 
+  const resetLocationDrivenState = useCallback(() => {
+    setUserCoordinate(null);
+    setAnchors([]);
+    setFilterOptions({
+      visibility: [],
+      anchor_status: [],
+      content_type: [],
+      tags: [],
+    });
+    setSelectedAnchorId(null);
+    setAnchorAttachments([]);
+    setAnchorLocation(null);
+    setEditingAnchor(null);
+    setErrorMessage(null);
+  }, []);
+
+  const syncGhostMode = useCallback(async () => {
+    if (!session?.access_token) {
+      setIsGhostMode(false);
+      setGhostModeLoaded(true);
+      return;
+    }
+
+    try {
+      const profile = await getProfile(session.access_token);
+      const ghostMode = profile.is_ghost_mode ?? false;
+      await setGhostModeBackgroundState(ghostMode);
+      setIsGhostMode(ghostMode);
+      if (ghostMode) {
+        await stopBackgroundLocationTracking();
+        resetLocationDrivenState();
+      } else {
+        await startBackgroundLocationTracking();
+      }
+    } catch {
+    } finally {
+      setGhostModeLoaded(true);
+    }
+  }, [resetLocationDrivenState, session?.access_token]);
+
 
   const collapsedHeight = 116;
   const expandedHeight = Math.min(windowHeight * 0.72, windowHeight - 128);
@@ -398,6 +443,7 @@ export default function DiscoveryScreen({ route }: Props) {
   const loadAnchors = useCallback(async () => {
     const token = session?.access_token;
     if (!token) return;
+    if (!ghostModeLoaded) return;
     if (isGhostMode) return;
 
     const center = userCoordinate ?? FALLBACK_CENTER;
@@ -454,6 +500,7 @@ export default function DiscoveryScreen({ route }: Props) {
       setIsLoading(false);
     }
   }, [
+    ghostModeLoaded,
     isGhostMode,
     selectedContentTypes,
     selectedStatuses,
@@ -466,6 +513,7 @@ export default function DiscoveryScreen({ route }: Props) {
   const loadFilterOptions = useCallback(async () => {
     const token = session?.access_token;
     if (!token) return;
+    if (!ghostModeLoaded) return;
     if (isGhostMode) return;
 
     const center = userCoordinate ?? FALLBACK_CENTER;
@@ -488,7 +536,7 @@ export default function DiscoveryScreen({ route }: Props) {
         tags: [],
       });
     }
-  }, [isGhostMode, session?.access_token, userCoordinate]);
+  }, [ghostModeLoaded, isGhostMode, session?.access_token, userCoordinate]);
 
   const refreshDiscovery = useCallback(() => {
     void loadFilterOptions();
@@ -504,22 +552,19 @@ export default function DiscoveryScreen({ route }: Props) {
   }, [loadFilterOptions]);
 
   useEffect(() => {
-    const loadGhostMode = async () => {
-      if (!session?.access_token) return;
-      try {
-        const profile = await getProfile(session.access_token);
-        const ghostMode = profile.is_ghost_mode ?? false;
-        setIsGhostMode(ghostMode);
-        if (ghostMode) {
-          setUserCoordinate(null);
-        }
-      } catch {
-      } finally {
-        setGhostModeLoaded(true);
-      }
-    };
-    void loadGhostMode();
-  }, [session?.access_token]);
+    void syncGhostMode();
+  }, [syncGhostMode]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void syncGhostMode();
+    }, [syncGhostMode]),
+  );
+
+  useEffect(() => {
+    if (!ghostModeLoaded || !isGhostMode) return;
+    resetLocationDrivenState();
+  }, [ghostModeLoaded, isGhostMode, resetLocationDrivenState]);
 
   useEffect(() => {
     const token = session?.access_token;
