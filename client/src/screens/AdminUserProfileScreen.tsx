@@ -45,8 +45,8 @@ export default function AdminUserProfileScreen({
     const nextIsBanned = !Boolean(user.is_banned);
     const actionLabel = nextIsBanned ? "Ban" : "Unban";
     const confirmationCopy = nextIsBanned
-      ? "This will block the user from continuing to use the app once backend enforcement is in place."
-      : "This will restore the user account once backend enforcement is in place.";
+      ? "This will block the user from continuing to use the app."
+      : "This will restore the user account.";
 
     Alert.alert(`${actionLabel} User`, confirmationCopy, [
       { text: "Cancel", style: "cancel" },

@@ -182,6 +182,15 @@ def _add_in_clause(
     return f"{field_sql} IN ({', '.join(placeholders)})"
 
 
+def _creator_is_not_banned_clause(table_alias: str) -> str:
+    return (
+        f" AND EXISTS ("
+        f"SELECT 1 FROM users creator "
+        f"WHERE creator.user_id = {table_alias}.creator_id "
+        f"AND creator.is_banned = FALSE)"
+    )
+
+
 def _build_anchor_filters(
     table_alias: str,
     visibility=None,
@@ -661,6 +670,7 @@ def get_all_anchors(
         content_type=content_type,
         tags=tags,
     )
+    filters = _creator_is_not_banned_clause("a") + filters
 
     rows = db.execute(
         text(f"""
@@ -714,6 +724,7 @@ def get_nearby_anchor_filter_options(
         AND (a.activation_time IS NULL OR a.activation_time <= UTC_TIMESTAMP())
         AND (a.expiration_time IS NULL OR a.expiration_time >= UTC_TIMESTAMP())
     """
+    filters += _creator_is_not_banned_clause("a")
     extra_filters, extra_params = _build_anchor_filters(
         table_alias="a",
         visibility=visibility,
@@ -821,6 +832,7 @@ def get_nearby_anchors(
         AND (a.activation_time IS NULL OR a.activation_time <= UTC_TIMESTAMP())
         AND (a.expiration_time IS NULL OR a.expiration_time >= UTC_TIMESTAMP())
     """
+    filters += _creator_is_not_banned_clause("a")
 
     extra_filters, extra_params = _build_anchor_filters(
         table_alias="a",

@@ -27,7 +27,11 @@ from app.core.audit import log_action
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.dependencies import get_current_user_id
+from app.core.dependencies import (
+    ACCOUNT_DISABLED_DETAIL,
+    ensure_user_is_active,
+    get_current_user_id,
+)
 from app.core.email import send_email
 from app.core.security import (
     create_access_token,
@@ -293,6 +297,12 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
             detail="Invalid email or password",
         )
 
+    if bool(getattr(user, "is_banned", False)):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=ACCOUNT_DISABLED_DETAIL,
+        )
+
     # Issue both access token (short-lived) and refresh token (long-lived)
     access_token = create_access_token(user.user_id)
     refresh_token = create_refresh_token(user.user_id)
@@ -413,6 +423,12 @@ def oauth_login(payload: OAuthRequest, db: Session = Depends(get_db)):
         db.commit()
         user = _get_user_by_id(db, user_id)
 
+    if bool(getattr(user, "is_banned", False)):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=ACCOUNT_DISABLED_DETAIL,
+        )
+
     # Issue tokens for both new and existing OAuth users
     access_token = create_access_token(user.user_id)
     refresh_token = create_refresh_token(user.user_id)
@@ -445,6 +461,8 @@ def refresh_token(payload: RefreshRequest, db: Session = Depends(get_db)):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired refresh token",
         )
+
+    ensure_user_is_active(db, user_id)
 
     # Also validate against DB in case session was explicitly revoked (e.g. logout)
     if not _is_session_valid(db, payload.refresh_token):
