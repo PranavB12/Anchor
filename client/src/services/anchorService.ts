@@ -231,12 +231,19 @@ export async function unlockAnchor(anchorId: string, token: string) {
 export type AttachmentType = 'IMAGE' | 'DOCUMENT' | 'AUDIO';
 
 export type AnchorAttachment = {
-  id: string;
+  content_id: string;
   anchor_id: string;
   creator_id: string;
-  type: AttachmentType;
-  file_url: string;
-  file_name: string;
+  content_type: string;
+  file_url: string | null;
+  file_name: string | null;
+  mime_type: string | null;
+  text_body: string | null;
+  language: string | null;
+  url: string | null;
+  page_title: string | null;
+  preview_url: string | null;
+  size_bytes: number;
   uploaded_at: string;
 };
 

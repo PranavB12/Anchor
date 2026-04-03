@@ -1207,8 +1207,8 @@ export default function DiscoveryScreen({ route }: Props) {
                 <View style={{ marginTop: 12, marginBottom: 12, gap: 10 }}>
                   <Text style={{ fontSize: 14, fontWeight: "600", color: colors.text }}>Attachments</Text>
                   {anchorAttachments.map(att => (
-                    <View key={att.id} style={{ borderRadius: 12, backgroundColor: colors.selectedCanvas, overflow: "hidden", borderWidth: 1, borderColor: colors.border }}>
-                      {att.type === "IMAGE" ? (
+                    <View key={att.content_id} style={{ borderRadius: 12, backgroundColor: colors.selectedCanvas, overflow: "hidden", borderWidth: 1, borderColor: colors.border }}>
+                      {att.mime_type?.startsWith("image/") ? (
                         <Image source={{ uri: att.file_url }} style={{ width: "100%", height: 180 }} resizeMode="cover" />
                       ) : (
                         <View style={{ padding: 12, flexDirection: "row", alignItems: "center", gap: 8 }}>
