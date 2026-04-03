@@ -288,14 +288,7 @@ export default function DiscoveryScreen({ route }: Props) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
 
-  useEffect(() => {
-    if (route.params?.targetAnchorId && anchors.length > 0) {
-      if (anchors.some((a) => a.anchor_id === route.params!.targetAnchorId)) {
-        setSelectedAnchorId(route.params.targetAnchorId);
-        setIsExpanded(true);
-      }
-    }
-  }, [route.params?.targetAnchorId, anchors]);
+
 
   const [anchorLocation, setAnchorLocation] = useState<Coordinate | null>(null);
   const [editingAnchor, setEditingAnchor] = useState<AnchorWithDerivedFields | null>(null);
@@ -387,6 +380,15 @@ export default function DiscoveryScreen({ route }: Props) {
     },
     [collapseOffset, sheetTranslateY],
   );
+
+  useEffect(() => {
+    if (route.params?.targetAnchorId && anchors.length > 0) {
+      if (anchors.some((a) => a.anchor_id === route.params!.targetAnchorId)) {
+        setSelectedAnchorId(route.params.targetAnchorId);
+        animateSheet(true);
+      }
+    }
+  }, [route.params?.targetAnchorId, anchors, animateSheet]);
 
   // The broken useEffect was removed from here.
   const collapseSheet = useCallback(() => {
@@ -1189,15 +1191,16 @@ export default function DiscoveryScreen({ route }: Props) {
                 </View>
                 <Text style={styles.detailMainTitle}>{selectedAnchor.title}</Text>
                 <Text style={styles.detailCreatorText}>Created by User {selectedAnchor.creator_id.substring(0, 5)}</Text>
-                {selectedAnchor.description ? <Text style={styles.detailMainDesc}>{selectedAnchor.description}</Text> : null}
-
-                <View style={styles.detailTagRow}>
-                  {(selectedAnchor.tags ?? []).map((tag) => (
-                    <View key={tag} style={styles.detailTagPill}>
-                      <Text style={styles.detailTagText}>#{tag}</Text>
-                    </View>
-                  ))}
-                </View>
+                {selectedAnchor.isUnlocked && selectedAnchor.description ? <Text style={styles.detailMainDesc}>{selectedAnchor.description}</Text> : null}
+                {selectedAnchor.isUnlocked && (
+                  <View style={styles.detailTagRow}>
+                    {(selectedAnchor.tags ?? []).map((tag) => (
+                      <View key={tag} style={styles.detailTagPill}>
+                        <Text style={styles.detailTagText}>#{tag}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
               </View>
 
               {selectedAnchor.isUnlocked && anchorAttachments.length > 0 && (
@@ -1235,55 +1238,57 @@ export default function DiscoveryScreen({ route }: Props) {
                 </View>
               )}
 
-              <View style={styles.detailInfoGrid}>
-                <View style={styles.detailInfoItem}>
-                   <View style={styles.detailInfoIconSection}>
-                     <Feather name="eye" size={16} color={colors.accentPink} />
-                   </View>
-                   <View style={styles.detailInfoTextSection}>
-                     <Text style={styles.detailInfoLabel}>Visibility</Text>
-                     <Text style={styles.detailInfoValue}>{selectedAnchor.visibilityLabel}</Text>
-                   </View>
-                </View>
-                <View style={styles.detailInfoItem}>
-                   <View style={styles.detailInfoIconSection}>
-                     <Feather name="crosshair" size={16} color={colors.accentPink} />
-                   </View>
-                   <View style={styles.detailInfoTextSection}>
-                     <Text style={styles.detailInfoLabel}>Unlock Radius</Text>
-                     <Text style={styles.detailInfoValue}>{selectedAnchor.unlock_radius}m</Text>
-                   </View>
-                </View>
-                {selectedAnchor.creator_id === session?.user_id && (
+              {selectedAnchor.isUnlocked && (
+                <View style={styles.detailInfoGrid}>
                   <View style={styles.detailInfoItem}>
-                     <View style={styles.detailInfoIconSection}>
-                       <Feather name="unlock" size={16} color={colors.accentPink} />
-                     </View>
-                     <View style={styles.detailInfoTextSection}>
-                       <Text style={styles.detailInfoLabel}>Unlocks</Text>
-                       <Text style={styles.detailInfoValue}>{selectedAnchor.max_unlock === null ? `${selectedAnchor.current_unlock}` : `${selectedAnchor.current_unlock} / ${selectedAnchor.max_unlock}`}</Text>
-                     </View>
+                    <View style={styles.detailInfoIconSection}>
+                      <Feather name="eye" size={16} color={colors.accentPink} />
+                    </View>
+                    <View style={styles.detailInfoTextSection}>
+                      <Text style={styles.detailInfoLabel}>Visibility</Text>
+                      <Text style={styles.detailInfoValue}>{selectedAnchor.visibilityLabel}</Text>
+                    </View>
                   </View>
-                )}
-                <View style={styles.detailInfoItem}>
-                   <View style={styles.detailInfoIconSection}>
-                     <Feather name="clock" size={16} color={colors.accentPink} />
-                   </View>
-                   <View style={styles.detailInfoTextSection}>
-                     <Text style={styles.detailInfoLabel}>Activated</Text>
-                     <Text style={styles.detailInfoValue}>{formatDateTime(selectedAnchor.activation_time)}</Text>
-                   </View>
+                  <View style={styles.detailInfoItem}>
+                    <View style={styles.detailInfoIconSection}>
+                      <Feather name="crosshair" size={16} color={colors.accentPink} />
+                    </View>
+                    <View style={styles.detailInfoTextSection}>
+                      <Text style={styles.detailInfoLabel}>Unlock Radius</Text>
+                      <Text style={styles.detailInfoValue}>{selectedAnchor.unlock_radius}m</Text>
+                    </View>
+                  </View>
+                  {selectedAnchor.creator_id === session?.user_id && (
+                    <View style={styles.detailInfoItem}>
+                       <View style={styles.detailInfoIconSection}>
+                         <Feather name="unlock" size={16} color={colors.accentPink} />
+                       </View>
+                       <View style={styles.detailInfoTextSection}>
+                         <Text style={styles.detailInfoLabel}>Unlocks</Text>
+                         <Text style={styles.detailInfoValue}>{selectedAnchor.max_unlock === null ? `${selectedAnchor.current_unlock}` : `${selectedAnchor.current_unlock} / ${selectedAnchor.max_unlock}`}</Text>
+                       </View>
+                    </View>
+                  )}
+                  <View style={styles.detailInfoItem}>
+                    <View style={styles.detailInfoIconSection}>
+                      <Feather name="clock" size={16} color={colors.accentPink} />
+                    </View>
+                    <View style={styles.detailInfoTextSection}>
+                      <Text style={styles.detailInfoLabel}>Activated</Text>
+                      <Text style={styles.detailInfoValue}>{formatDateTime(selectedAnchor.activation_time)}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.detailInfoItem}>
+                    <View style={styles.detailInfoIconSection}>
+                      <Feather name="calendar" size={16} color={colors.accentPink} />
+                    </View>
+                    <View style={styles.detailInfoTextSection}>
+                      <Text style={styles.detailInfoLabel}>Expires</Text>
+                      <Text style={styles.detailInfoValue}>{formatDateTime(selectedAnchor.expiration_time)}</Text>
+                    </View>
+                  </View>
                 </View>
-                <View style={styles.detailInfoItem}>
-                   <View style={styles.detailInfoIconSection}>
-                     <Feather name="calendar" size={16} color={colors.accentPink} />
-                   </View>
-                   <View style={styles.detailInfoTextSection}>
-                     <Text style={styles.detailInfoLabel}>Expires</Text>
-                     <Text style={styles.detailInfoValue}>{formatDateTime(selectedAnchor.expiration_time)}</Text>
-                   </View>
-                </View>
-              </View>
+              )}
 
               <View style={styles.detailActionRow}>
                 {selectedAnchor.creator_id === session?.user_id ? (

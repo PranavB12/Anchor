@@ -77,7 +77,7 @@ export default function AdminAuditLogsScreen({ navigation }: Props) {
     return (
       <View style={styles.logCard}>
         <View style={styles.cardHeader}>
-          <Text style={styles.actionType}>{item.action_type}</Text>
+          <Text style={[styles.actionType, (item.action_type === 'FAILED_LOGIN' || item.action_type === 'ANCHOR_DELETE') && styles.actionTypeCritical]}>{item.action_type}</Text>
           <Text style={styles.timestamp}>{new Date(item.timestamp).toLocaleString()}</Text>
         </View>
         <Text style={styles.userInfo}>User: {item.username} ({item.email})</Text>
@@ -335,10 +335,13 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   actionType: {
-    color: colors.accentPink,
+    color: colors.success,
     fontSize: 14,
     fontWeight: "800",
     letterSpacing: 0.5,
+  },
+  actionTypeCritical: {
+    color: colors.error,
   },
   timestamp: {
     color: colors.muted,

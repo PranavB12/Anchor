@@ -287,6 +287,7 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
         )
 
     if not verify_password(payload.password, user.password_hash):
+        log_action(db, user.user_id, "FAILED_LOGIN", request=request)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",

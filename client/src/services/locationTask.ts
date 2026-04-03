@@ -71,6 +71,7 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
       let newlyDiscoveredCount = 0;
       let firstName = "";
       let firstAnchorId = "";
+      let firstDistance = 0;
 
       for (const anchor of anchors) {
         if (anchor.status !== 'ACTIVE') continue;
@@ -84,6 +85,7 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
           if (!firstName) {
             firstName = anchor.title;
             firstAnchorId = anchor.anchor_id;
+            firstDistance = dist;
           }
           try {
             unlockAnchor(anchor.anchor_id, session.access_token);
@@ -95,8 +97,8 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
         console.log("[BG_TASK] MATCH FOUND! TRIGGERING PUSH NOTIFICATION...");
         await Notifications.scheduleNotificationAsync({
           content: {
-            title: "New Anchors Nearby (BG Trigger)",
-            body: `You passed by ${newlyDiscoveredCount} anchors! Lat: ${lat.toFixed(4)}, Lon: ${lon.toFixed(4)}`,
+            title: "New Anchors Nearby!",
+            body: `You unlocked '${firstName}' (${firstDistance.toFixed(0)}m away). ${newlyDiscoveredCount > 1 ? `And ${newlyDiscoveredCount - 1} others!` : ''}`,
             sound: false,
             data: { anchor_id: firstAnchorId },
           },

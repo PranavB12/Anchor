@@ -858,8 +858,10 @@ def get_nearby_anchors(
                     FROM Content c
                     WHERE c.anchor_id = a.anchor_id
                 ) AS content_type,
-                -- Verify if already unlocked by this user or created by them
-                (ua.anchor_id IS NOT NULL OR a.creator_id = :session_user_id) AS is_unlocked,
+                -- Only unlocked if creator OR currently within radius
+                (a.creator_id = :session_user_id OR ST_Distance_Sphere(a.location, ST_GeomFromText(:user_point, 4326)) <= a.unlock_radius) AS is_unlocked,
+                -- Track if previously unlocked to handle count increments correctly
+                (ua.anchor_id IS NOT NULL) AS has_previously_unlocked,
                 -- Calculate distance in meters from user's position to each anchor
                 ST_Distance_Sphere(
                     a.location,
@@ -881,25 +883,27 @@ def get_nearby_anchors(
     results = []
     for row in rows:
         is_unlocked = bool(row.is_unlocked)
-        # Auto-unlock logic
-        if not is_unlocked and row.status == 'ACTIVE' and row.distance_m <= row.unlock_radius:
+        is_creator = row.creator_id == user_id
+        
+        # Auto-unlock logic (track unique unlocks and increment counts)
+        if is_unlocked and not is_creator and not bool(row.has_previously_unlocked) and row.status == 'ACTIVE':
             try:
-                # 1. Insert into tracking table
+                # 1. Insert into tracking table to mark as "once visited"
                 db.execute(
                     text("INSERT INTO unlocked_anchors (user_id, anchor_id) VALUES (:user_id, :anchor_id)"),
                     {"user_id": user_id, "anchor_id": row.anchor_id}
                 )
                 
-                # 2. Increment unlock count
+                # 2. Increment global unlock count
                 db.execute(
                     text("UPDATE anchors SET current_unlock = current_unlock + 1 WHERE anchor_id = :anchor_id"),
-                    {"anchor_id": row.anchor_id}
+                    {"user_id": user_id, "anchor_id": row.anchor_id}
                 )
                 
-                # 3. Check max auto-expire immediately on the DB side
+                # 3. Check max auto-expire immediately
                 if row.max_unlock is not None and (row.current_unlock + 1) >= row.max_unlock:
                     db.execute(
-                        text("UPDATE anchors SET status = 'EXPIRED' WHERE anchor_id = :anchor_id AND current_unlock >= max_unlock"),
+                        text("UPDATE anchors SET status = 'EXPIRED' WHERE anchor_id = :anchor_id"),
                         {"anchor_id": row.anchor_id}
                     )
                 
