@@ -19,13 +19,16 @@ from app.core.database import SessionLocal
 async def lifespan(_app: FastAPI):
     db = SessionLocal()
     try:
-        db.execute(
-            text("""
-                ALTER TABLE users
-                ADD COLUMN IF NOT EXISTS is_banned BOOLEAN NOT NULL DEFAULT FALSE
-            """)
-        )
-        db.commit()
+        check_col = db.execute(text("""
+            SELECT COUNT(*) 
+            FROM information_schema.columns 
+            WHERE table_name = 'users' 
+              AND column_name = 'is_banned' 
+              AND table_schema = DATABASE()
+        """)).fetchone()
+        if check_col and check_col[0] == 0:
+            db.execute(text("ALTER TABLE users ADD COLUMN is_banned BOOLEAN NOT NULL DEFAULT FALSE"))
+            db.commit()
     finally:
         db.close()
 
