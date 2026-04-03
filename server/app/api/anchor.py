@@ -68,6 +68,18 @@ def _get_anchor_by_id(db: Session, anchor_id: str):
     return row
 
 
+def _require_location_access(db: Session, user_id: str):
+    row = db.execute(
+        text("SELECT is_ghost_mode FROM users WHERE user_id = :user_id"),
+        {"user_id": user_id},
+    ).fetchone()
+    if row and row.is_ghost_mode:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Location features are unavailable while Ghost Mode is enabled.",
+        )
+
+
 def _parse_tags(raw_tags) -> Optional[List[str]]:
     if isinstance(raw_tags, str):
         try:
@@ -316,6 +328,7 @@ def create_anchor(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="visibility must be PUBLIC, PRIVATE, or CIRCLE_ONLY",
         )
+    _require_location_access(db, user_id)
 
     now = datetime.utcnow()
     activation_time = _to_utc_naive(payload.activation_time)
@@ -402,6 +415,9 @@ def update_anchor(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You do not have permission to edit this Anchor",
         )
+
+    if payload.latitude is not None or payload.longitude is not None:
+        _require_location_access(db, user_id)
 
     if payload.visibility is not None and payload.visibility not in VALID_VISIBILITY:
         raise HTTPException(
@@ -688,7 +704,7 @@ def get_nearby_anchor_filter_options(
     Return available nearby filter options with counts for the current search area.
     Uses the same base location and active-window constraints as nearby discovery.
     """
-    del user_id
+    _require_location_access(db, user_id)
 
     params = {
         "radius_m": radius_km * 1000,
@@ -780,6 +796,7 @@ def get_nearby_anchors(
     Uses MySQL ST_Distance_Sphere for accurate great-circle distance in meters.
     Filters are appended dynamically to the WHERE clause only if provided.
     """
+    _require_location_access(db, user_id)
 
     # Mark passed anchors as EXPIRED before retrieving
     db.execute(
