@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
     avatar_url      VARCHAR(2048)   NULL,
     is_ghost_mode   BOOLEAN         NOT NULL DEFAULT FALSE,
     is_admin        BOOLEAN         NOT NULL DEFAULT FALSE,
+    is_banned       BOOLEAN         NOT NULL DEFAULT FALSE,
     oauth_provider  VARCHAR(50)     NULL,                       
     oauth_provider_id VARCHAR(255)  NULL,
     reset_token     VARCHAR(255)    NULL,                       
