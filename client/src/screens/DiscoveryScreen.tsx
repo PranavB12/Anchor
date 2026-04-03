@@ -297,6 +297,7 @@ export default function DiscoveryScreen({ route }: Props) {
   const [radius, setRadius] = useState(50);
 
   const [isGhostMode, setIsGhostMode] = useState(false);
+  const [ghostModeLoaded, setGhostModeLoaded] = useState(false);
   const [canViewAdminDashboard, setCanViewAdminDashboard] = useState(false);
 
 
@@ -513,6 +514,8 @@ export default function DiscoveryScreen({ route }: Props) {
           setUserCoordinate(null);
         }
       } catch {
+      } finally {
+        setGhostModeLoaded(true);
       }
     };
     void loadGhostMode();
@@ -534,6 +537,7 @@ export default function DiscoveryScreen({ route }: Props) {
   }, [session?.access_token]);
 
   useEffect(() => {
+    if (!ghostModeLoaded) return;
     if (isGhostMode) return;
 
     let subscription: Location.LocationSubscription | null = null;
@@ -559,7 +563,7 @@ export default function DiscoveryScreen({ route }: Props) {
     return () => {
       subscription?.remove();
     };
-  }, [isGhostMode]);
+  }, [isGhostMode, ghostModeLoaded]);
 
   // Recompute distance/isWithinRadius instantly when location updates,
   // without waiting for a full API re-fetch.
