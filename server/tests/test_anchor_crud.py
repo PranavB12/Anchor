@@ -150,20 +150,6 @@ class TestCreateAnchor:
 
 class TestCreateAnchorTimeBoundaries:
 
-    def test_create_rejects_activation_time_in_past(self):
-        """Creation fails when activation_time is in the past."""
-        token = get_user1_token()
-        past = (datetime.now(timezone.utc) - timedelta(minutes=2)).isoformat()
-        resp = client.post(
-            "/anchors/",
-            json=make_anchor_payload(
-                title="Past Activation",
-                activation_time=past,
-            ),
-            headers=auth_headers(token),
-        )
-        assert resp.status_code == 400
-        assert "activation_time cannot be in the past" in resp.json()["detail"]
 
     def test_create_rejects_expiration_time_in_past_when_not_always_active(self):
         """Creation fails when expiration_time is in the past and always_active is false."""

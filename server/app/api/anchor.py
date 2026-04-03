@@ -319,11 +319,6 @@ def create_anchor(
     activation_time = _to_utc_naive(payload.activation_time)
     expiration_time = None if payload.always_active else _to_utc_naive(payload.expiration_time)
 
-    if activation_time and activation_time < now:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="activation_time cannot be in the past",
-        )
     if expiration_time and expiration_time < now:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -411,11 +406,6 @@ def update_anchor(
         )
 
     now = datetime.utcnow()
-    if payload.activation_time is not None and payload.activation_time < now:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="activation_time cannot be in the past",
-        )
     if payload.expiration_time is not None and payload.expiration_time < now:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

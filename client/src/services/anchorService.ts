@@ -54,6 +54,11 @@ export type AnchorDraft = {
   expiration_time: string | null;
   always_active: boolean;
   tags: string[];
+  attachment?: {
+    uri: string;
+    name: string;
+    type: string;
+  } | null;
 };
 
 export async function createAnchor(body: CreateAnchorBody, token: string) {
@@ -100,6 +105,7 @@ function appendRepeatedParams(
 export async function getNearbyAnchors(
   params: GetNearbyAnchorsParams,
   token: string,
+  isBackground: boolean = false // Add this parameter
 ) {
   const query = new URLSearchParams({
     lat: String(params.lat),
@@ -116,6 +122,7 @@ export async function getNearbyAnchors(
   return apiRequest<NearbyAnchor[]>(`/anchors/nearby?${query.toString()}`, {
     method: "GET",
     token,
+    useFileSystemBypass: isBackground, // Only bypass when true
   });
 }
 
@@ -233,19 +240,14 @@ export type AnchorAttachment = {
   uploaded_at: string;
 };
 
-// In-memory mock store for attachments
-const MOCK_ATTACHMENTS: Record<string, AnchorAttachment[]> = {};
-
 export async function getAnchorAttachments(
   anchorId: string,
   token: string,
 ): Promise<AnchorAttachment[]> {
-  // TODO: Replace with real backend API call
-  // Example: return apiRequest<AnchorAttachment[]>(`/anchors/${anchorId}/content`, { ... })
-  
-  // Simulated network delay
-  await new Promise((resolve) => setTimeout(resolve, 500));
-  return MOCK_ATTACHMENTS[anchorId] || [];
+  return apiRequest<AnchorAttachment[]>(`/anchors/${anchorId}/content`, {
+    method: "GET",
+    token,
+  });
 }
 
 export async function uploadAnchorAttachment(
@@ -256,25 +258,27 @@ export async function uploadAnchorAttachment(
   mimeType: string,
   token: string,
 ): Promise<AnchorAttachment> {
-  // TODO: Replace with real backend API / S3 bucket upload logic
-  // e.g. FormData upload to POST /anchors/${anchorId}/content
-  
-  await new Promise((resolve) => setTimeout(resolve, 800));
+  const formData = new FormData();
+  formData.append("file", {
+    uri: fileUri,
+    name: fileName,
+    type: mimeType,
+  } as any);
 
-  const newAttachment: AnchorAttachment = {
-    id: Math.random().toString(36).substring(7),
-    anchor_id: anchorId,
-    creator_id: userId,
-    type: mimeType.startsWith("image/") ? 'IMAGE' : 'DOCUMENT',
-    file_url: fileUri, // Mock local file uri
-    file_name: fileName,
-    uploaded_at: new Date().toISOString(),
-  };
+  // Directly hit the upload endpoint (currently unimplemented)
+  const response = await fetch(`http://10.0.2.2:8000/api/v1/anchors/${anchorId}/content`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "multipart/form-data",
+    },
+    body: formData,
+  });
 
-  if (!MOCK_ATTACHMENTS[anchorId]) {
-    MOCK_ATTACHMENTS[anchorId] = [];
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => null);
+    throw new Error(errorData?.detail || `Upload failed with status ${response.status}`);
   }
-  MOCK_ATTACHMENTS[anchorId].push(newAttachment);
 
-  return newAttachment;
+  return response.json();
 }

@@ -247,8 +247,11 @@ function AnchorRowCard({
     </Pressable>
   );
 }
+import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
-export default function DiscoveryScreen() {
+type Props = NativeStackScreenProps<RootStackParamList, "Discovery">;
+
+export default function DiscoveryScreen({ route }: Props) {
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -273,10 +276,21 @@ export default function DiscoveryScreen() {
     tags: [],
   });
   const [selectedAnchorId, setSelectedAnchorId] = useState<string | null>(null);
+  const [anchorAttachments, setAnchorAttachments] = useState<AnchorAttachment[]>([]);
+  const [fetchingAttachments, setFetchingAttachments] = useState(false);
   const [isReportModalVisible, setIsReportModalVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
+
+  useEffect(() => {
+    if (route.params?.targetAnchorId && anchors.length > 0) {
+      if (anchors.some((a) => a.anchor_id === route.params!.targetAnchorId)) {
+        setSelectedAnchorId(route.params.targetAnchorId);
+        setIsExpanded(true);
+      }
+    }
+  }, [route.params?.targetAnchorId, anchors]);
 
   const [anchorLocation, setAnchorLocation] = useState<Coordinate | null>(null);
   const [editingAnchor, setEditingAnchor] = useState<AnchorWithDerivedFields | null>(null);
@@ -714,6 +728,26 @@ export default function DiscoveryScreen() {
     setSelectedAnchorId(null);
   }, [anchors, selectedAnchorId]);
 
+  useEffect(() => {
+    const fetchAttachments = async () => {
+      const anchor = anchors.find(a => a.anchor_id === selectedAnchorId);
+      if (anchor && anchor.isUnlocked && session?.access_token) {
+        setFetchingAttachments(true);
+        try {
+          const attachments = await getAnchorAttachments(anchor.anchor_id, session.access_token);
+          setAnchorAttachments(attachments);
+        } catch (e) {
+          console.error("Failed to load attachments", e);
+        } finally {
+          setFetchingAttachments(false);
+        }
+      } else {
+        setAnchorAttachments([]);
+      }
+    };
+    void fetchAttachments();
+  }, [selectedAnchorId, anchors, session?.access_token]);
+
   const filterConfigs: FilterConfig[] = [
     {
       menu: "tags" as const,
@@ -1108,6 +1142,27 @@ export default function DiscoveryScreen() {
                   ))}
                 </View>
               </View>
+
+              {selectedAnchor.isUnlocked && anchorAttachments.length > 0 && (
+                <View style={{ marginTop: 12, marginBottom: 12, gap: 10 }}>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: colors.text }}>Attachments</Text>
+                  {anchorAttachments.map(att => (
+                    <View key={att.id} style={{ borderRadius: 12, backgroundColor: colors.selectedCanvas, overflow: "hidden", borderWidth: 1, borderColor: colors.border }}>
+                      {att.type === "IMAGE" ? (
+                        <Image source={{ uri: att.file_url }} style={{ width: "100%", height: 180 }} resizeMode="cover" />
+                      ) : (
+                        <View style={{ padding: 12, flexDirection: "row", alignItems: "center", gap: 8 }}>
+                          <Feather name="file" size={20} color={colors.accentPink} />
+                          <Text style={{ flex: 1, color: colors.text }}>{att.file_name || "Attachment"}</Text>
+                        </View>
+                      )}
+                    </View>
+                  ))}
+                </View>
+              )}
+              {selectedAnchor.isUnlocked && fetchingAttachments && (
+                <ActivityIndicator size="small" color={colors.accentPink} style={{ marginVertical: 12 }} />
+              )}
 
               {!selectedAnchor.isWithinRadius ? (
                 <View style={styles.proximityBanner}>

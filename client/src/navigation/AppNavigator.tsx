@@ -23,7 +23,7 @@ export type RootStackParamList = {
   Register: undefined;
   ForgotPassword: undefined;
   ResetPassword: { token: string };
-  Discovery: undefined;
+  Discovery: { targetAnchorId?: string } | undefined;
   Map: undefined;
   AnchorCreation: { latitude: number; longitude: number; radius: number };
   AnchorPreview: { draft: AnchorDraft };
@@ -32,6 +32,9 @@ export type RootStackParamList = {
   AdminDashboard: undefined;
   AdminUserProfile: { user: AdminUserSummary };
 };
+
+import { createNavigationContainerRef } from "@react-navigation/native";
+export const navigationRef = createNavigationContainerRef<RootStackParamList>();
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -63,7 +66,7 @@ export default function AppNavigator() {
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       <Stack.Navigator
         initialRouteName={status === "authenticated" ? "Discovery" : "Login"}
         screenOptions={{

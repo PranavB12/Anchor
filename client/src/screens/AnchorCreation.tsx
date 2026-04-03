@@ -81,6 +81,12 @@ export default function AnchorCreation({ navigation, route }: Props) {
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const file = result.assets[0];
+        
+        if (file.size && file.size > 10 * 1024 * 1024) {
+          Alert.alert("File too large", "Please select a file smaller than 10MB.");
+          return;
+        }
+
         setSelectedFile({
           uri: file.uri,
           name: file.name,
@@ -103,7 +109,7 @@ export default function AnchorCreation({ navigation, route }: Props) {
     expiry: Date | null,
     alwaysOn: boolean,
   ): string | null => {
-    // Allow slight client/server timing drift for "now".
+    // Allow slight client/server timing drift for now
     const now = new Date(Date.now() - 60 * 1000);
     if (!alwaysOn) {
       if (!expiry) {
@@ -275,6 +281,7 @@ export default function AnchorCreation({ navigation, route }: Props) {
       description: content.trim() || null,
       max_unlock: parsedMaxUnlock,
       tags,
+      attachment: contentType === "file" ? selectedFile : null,
     };
   };
 
@@ -398,12 +405,12 @@ export default function AnchorCreation({ navigation, route }: Props) {
             />
           )}
           {contentType === "file" && (
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[
-                styles.input, 
-                styles.filePlaceholder, 
+                styles.input,
+                styles.filePlaceholder,
                 selectedFile && { borderStyle: "solid", borderColor: colors.accentPink, backgroundColor: "#FEE8ED" }
-              ]} 
+              ]}
               activeOpacity={0.7}
               onPress={handlePickFile}
             >

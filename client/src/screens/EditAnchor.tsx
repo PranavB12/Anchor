@@ -100,6 +100,12 @@ export default function EditAnchor({ navigation, route }: Props) {
 
             if (!result.canceled && result.assets && result.assets.length > 0) {
                 const file = result.assets[0];
+                
+                if (file.size && file.size > 10 * 1024 * 1024) {
+                    Alert.alert("File too large", "Please select a file smaller than 10MB.");
+                    return;
+                }
+
                 setSelectedFile({
                     uri: file.uri,
                     name: file.name,

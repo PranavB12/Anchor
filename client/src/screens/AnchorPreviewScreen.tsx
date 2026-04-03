@@ -89,7 +89,24 @@ export default function AnchorPreviewScreen({ navigation, route }: Props) {
 
     setIsSubmitting(true);
     try {
-      await createAnchor(draft, session.access_token);
+      const newAnchor = await createAnchor(draft, session.access_token);
+      
+      if (draft.attachment) {
+        try {
+          const { uploadAnchorAttachment } = require('../services/anchorService');
+          await uploadAnchorAttachment(
+            newAnchor.anchor_id,
+            session.user_id,
+            draft.attachment.uri,
+            draft.attachment.name,
+            draft.attachment.type,
+            session.access_token
+          );
+        } catch (e: any) {
+          Alert.alert("Attachment Error", "Anchor was created but attachment failed: " + e.message);
+        }
+      }
+
       navigation.navigate("Discovery");
     } catch (err) {
       Alert.alert(
@@ -197,6 +214,22 @@ export default function AnchorPreviewScreen({ navigation, route }: Props) {
               <Text style={styles.emptyState}>No tags</Text>
             )}
           </View>
+
+          {draft.attachment && (
+            <View style={{ marginTop: 24 }}>
+              <Text style={styles.sectionLabel}>Attachment</Text>
+              <View style={{ borderRadius: 12, backgroundColor: colors.selectedCanvas, overflow: "hidden", borderWidth: 1, borderColor: colors.border, marginTop: 8 }}>
+                {draft.attachment.type.startsWith("image/") ? (
+                  <Image source={{ uri: draft.attachment.uri }} style={{ width: "100%", height: 180 }} resizeMode="cover" />
+                ) : (
+                  <View style={{ padding: 12, flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Feather name="file" size={20} color={colors.accentPink} />
+                    <Text style={{ flex: 1, color: colors.text }}>{draft.attachment.name || "Attachment"}</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          )}
         </View>
       </ScrollView>
 
