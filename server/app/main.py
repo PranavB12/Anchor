@@ -13,18 +13,19 @@ from app.api.user import router as user_router
 from app.api.anchor import router as anchor_router
 from app.api.report import router as report_router
 from app.api.admin import router as admin_router
-<<<<<<< Updated upstream
+from app.api.content import router as content_router
 from app.core.database import SessionLocal
+
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     db = SessionLocal()
     try:
         check_col = db.execute(text("""
-            SELECT COUNT(*) 
-            FROM information_schema.columns 
-            WHERE table_name = 'users' 
-              AND column_name = 'is_banned' 
+            SELECT COUNT(*)
+            FROM information_schema.columns
+            WHERE table_name = 'users'
+              AND column_name = 'is_banned'
               AND table_schema = DATABASE()
         """)).fetchone()
         if check_col and check_col[0] == 0:
@@ -34,9 +35,7 @@ async def lifespan(_app: FastAPI):
         db.close()
 
     yield
-=======
-from app.api.content import router as content_router
->>>>>>> Stashed changes
+
 
 app = FastAPI(
     title="Anchor API",
