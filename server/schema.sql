@@ -80,6 +80,7 @@ create table if not exists media_content (
     content_id      CHAR(36)                                            primary key,
     file_url        varchar(2048)                                       not null,
     mime_type       varchar(255)                                        not null,
+    file_name       varchar(255)                                        null,
 
     FOREIGN KEY (content_id) REFERENCES Content(content_id) ON delete cascade
 );

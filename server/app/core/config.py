@@ -57,7 +57,7 @@ class Settings(BaseSettings):
     # ── AWS S3 ────────────────────────────────────────────────────────────────
     AWS_ACCESS_KEY_ID: Optional[str] = None
     AWS_SECRET_ACCESS_KEY: Optional[str] = None
-    AWS_REGION: str = "us-east-1"
+    AWS_REGION: str = "us-east-2"
     S3_BUCKET_NAME: str = "anchor-avatars"
 
     class Config:
