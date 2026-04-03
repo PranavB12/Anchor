@@ -145,7 +145,7 @@ export async function startBackgroundLocationTracking() {
   try {
     await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
       accuracy: Location.Accuracy.Highest,
-      distanceInterval: 10,
+      distanceInterval: 1,
       timeInterval: 2000,
       deferredUpdatesInterval: 2000,
       showsBackgroundLocationIndicator: true, // Must be true on Android
