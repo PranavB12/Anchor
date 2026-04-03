@@ -15,6 +15,8 @@ import {
 import DateTimePicker from "@react-native-community/datetimepicker";
 
 import { useAuth } from "../context/AuthContext";
+import AdminSectionTabs from "../components/AdminSectionTabs";
+import { useAdminAccessGuard } from "../hooks/useAdminAccessGuard";
 import type { RootStackParamList } from "../navigation/AppNavigator";
 import { fetchAuditLogs, type AuditLog } from "../services/adminService";
 
@@ -37,6 +39,9 @@ const colors = {
 
 export default function AdminAuditLogsScreen({ navigation }: Props) {
   const { session } = useAuth();
+  const { accessError, hasAccess, isCheckingAccess } = useAdminAccessGuard(
+    session?.access_token,
+  );
   
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -51,7 +56,7 @@ export default function AdminAuditLogsScreen({ navigation }: Props) {
   const [showEndPicker, setShowEndPicker] = useState(false);
 
   const loadLogs = async () => {
-    if (!session?.access_token) return;
+    if (!session?.access_token || !hasAccess) return;
     setIsLoading(true);
     setErrorMessage(null);
     try {
@@ -69,9 +74,10 @@ export default function AdminAuditLogsScreen({ navigation }: Props) {
   };
 
   useEffect(() => {
+    if (!hasAccess) return;
     loadLogs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.access_token, startDate, endDate]);
+  }, [hasAccess, session?.access_token, startDate, endDate]);
 
   const renderLogItem = ({ item }: { item: AuditLog }) => {
     return (
@@ -97,106 +103,131 @@ export default function AdminAuditLogsScreen({ navigation }: Props) {
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.screen}>
         <View style={styles.header}>
-          <Pressable onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Pressable onPress={() => navigation.navigate("Discovery")} style={styles.backButton}>
             <Text style={styles.backButtonText}>Back</Text>
           </Pressable>
-          <Text style={styles.title}>Audit Logs</Text>
+          <Text style={styles.title}>Admin Dashboard</Text>
           <View style={styles.backButtonPlaceholder} />
         </View>
 
-        <View style={styles.filterCard}>
-          <Text style={styles.filterTitle}>Filters</Text>
-          
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Action Type</Text>
-            <View style={styles.actionTypeRow}>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g. LOGIN, ANCHOR_CREATE"
-                placeholderTextColor={colors.lightMuted}
-                autoCapitalize="characters"
-                value={actionType}
-                onChangeText={setActionType}
-                onSubmitEditing={loadLogs}
-              />
-              <Pressable style={styles.searchBtn} onPress={loadLogs}>
-                <Text style={styles.searchBtnText}>Apply</Text>
-              </Pressable>
-            </View>
-          </View>
+        <AdminSectionTabs
+          activeTab="Logs"
+          onNavigate={(route) => navigation.navigate(route)}
+        />
 
-          <View style={styles.dateRow}>
-            <View style={styles.dateControl}>
-              <Text style={styles.label}>Start Date</Text>
-              <Pressable style={styles.dateBox} onPress={() => setShowStartPicker(true)}>
-                <Text style={startDate ? styles.dateText : styles.datePlaceholder}>
-                  {startDate ? startDate.toLocaleDateString() : "Select date"}
-                </Text>
-              </Pressable>
-            </View>
-            <View style={styles.dateControl}>
-              <Text style={styles.label}>End Date</Text>
-              <Pressable style={styles.dateBox} onPress={() => setShowEndPicker(true)}>
-                <Text style={endDate ? styles.dateText : styles.datePlaceholder}>
-                  {endDate ? endDate.toLocaleDateString() : "Select date"}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-          
-          {(startDate || endDate) && (
-            <Pressable style={styles.clearDatesBtn} onPress={() => { setStartDate(undefined); setEndDate(undefined); }}>
-              <Text style={styles.clearDatesBtnText}>Clear Dates</Text>
-            </Pressable>
-          )}
-
-          {showStartPicker && (
-            <DateTimePicker
-              value={startDate || new Date()}
-              mode="date"
-              display="default"
-              onChange={(e, date) => {
-                setShowStartPicker(false);
-                if (date) setStartDate(date);
-              }}
-            />
-          )}
-
-          {showEndPicker && (
-            <DateTimePicker
-              value={endDate || new Date()}
-              mode="date"
-              display="default"
-              onChange={(e, date) => {
-                setShowEndPicker(false);
-                if (date) setEndDate(date);
-              }}
-            />
-          )}
-        </View>
-
-        {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
-
-        {isLoading ? (
+        {isCheckingAccess ? (
           <View style={styles.centerState}>
             <ActivityIndicator size="large" color={colors.accentPink} />
-            <Text style={styles.stateText}>Loading logs...</Text>
+            <Text style={styles.stateText}>Checking admin access...</Text>
           </View>
-        ) : (
-          <FlatList
-            data={logs}
-            keyExtractor={(item) => item.log_id}
-            renderItem={renderLogItem}
-            contentContainerStyle={styles.listContent}
-            showsVerticalScrollIndicator={false}
-            ListEmptyComponent={
-              <View style={styles.centerState}>
-                <Text style={styles.stateTitle}>No logs found</Text>
-                <Text style={styles.stateText}>Try adjusting your filters.</Text>
+        ) : null}
+
+        {!isCheckingAccess && accessError ? (
+          <View style={styles.centerState}>
+            <Text style={styles.stateTitle}>403 Forbidden</Text>
+            <Text style={styles.stateText}>
+              Admin tools are restricted to approved moderators. This session cannot access admin endpoints.
+            </Text>
+          </View>
+        ) : null}
+
+        {!isCheckingAccess && hasAccess ? (
+          <>
+            <View style={styles.filterCard}>
+              <Text style={styles.filterTitle}>Filters</Text>
+              
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Action Type</Text>
+                <View style={styles.actionTypeRow}>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g. LOGIN, ANCHOR_CREATE"
+                    placeholderTextColor={colors.lightMuted}
+                    autoCapitalize="characters"
+                    value={actionType}
+                    onChangeText={setActionType}
+                    onSubmitEditing={loadLogs}
+                  />
+                  <Pressable style={styles.searchBtn} onPress={loadLogs}>
+                    <Text style={styles.searchBtnText}>Apply</Text>
+                  </Pressable>
+                </View>
               </View>
-            }
-          />
-        )}
+
+              <View style={styles.dateRow}>
+                <View style={styles.dateControl}>
+                  <Text style={styles.label}>Start Date</Text>
+                  <Pressable style={styles.dateBox} onPress={() => setShowStartPicker(true)}>
+                    <Text style={startDate ? styles.dateText : styles.datePlaceholder}>
+                      {startDate ? startDate.toLocaleDateString() : "Select date"}
+                    </Text>
+                  </Pressable>
+                </View>
+                <View style={styles.dateControl}>
+                  <Text style={styles.label}>End Date</Text>
+                  <Pressable style={styles.dateBox} onPress={() => setShowEndPicker(true)}>
+                    <Text style={endDate ? styles.dateText : styles.datePlaceholder}>
+                      {endDate ? endDate.toLocaleDateString() : "Select date"}
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+              
+              {(startDate || endDate) && (
+                <Pressable style={styles.clearDatesBtn} onPress={() => { setStartDate(undefined); setEndDate(undefined); }}>
+                  <Text style={styles.clearDatesBtnText}>Clear Dates</Text>
+                </Pressable>
+              )}
+
+              {showStartPicker && (
+                <DateTimePicker
+                  value={startDate || new Date()}
+                  mode="date"
+                  display="default"
+                  onChange={(e, date) => {
+                    setShowStartPicker(false);
+                    if (date) setStartDate(date);
+                  }}
+                />
+              )}
+
+              {showEndPicker && (
+                <DateTimePicker
+                  value={endDate || new Date()}
+                  mode="date"
+                  display="default"
+                  onChange={(e, date) => {
+                    setShowEndPicker(false);
+                    if (date) setEndDate(date);
+                  }}
+                />
+              )}
+            </View>
+
+            {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+
+            {isLoading ? (
+              <View style={styles.centerState}>
+                <ActivityIndicator size="large" color={colors.accentPink} />
+                <Text style={styles.stateText}>Loading logs...</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={logs}
+                keyExtractor={(item) => item.log_id}
+                renderItem={renderLogItem}
+                contentContainerStyle={styles.listContent}
+                showsVerticalScrollIndicator={false}
+                ListEmptyComponent={
+                  <View style={styles.centerState}>
+                    <Text style={styles.stateTitle}>No logs found</Text>
+                    <Text style={styles.stateText}>Try adjusting your filters.</Text>
+                  </View>
+                }
+              />
+            )}
+          </>
+        ) : null}
       </View>
     </SafeAreaView>
   );

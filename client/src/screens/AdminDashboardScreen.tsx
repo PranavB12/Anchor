@@ -2,18 +2,22 @@ import { useEffect, useState } from "react";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import {
   ActivityIndicator,
+  Keyboard,
   Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  TouchableWithoutFeedback,
   View,
   Platform,
   StatusBar,
 } from "react-native";
 
 import { useAuth } from "../context/AuthContext";
+import AdminSectionTabs from "../components/AdminSectionTabs";
+import { useAdminAccessGuard } from "../hooks/useAdminAccessGuard";
 import type { RootStackParamList } from "../navigation/AppNavigator";
 import {
   searchAdminUsers,
@@ -37,6 +41,9 @@ function formatLastLogin(value?: string | null) {
 
 export default function AdminDashboardScreen({ navigation }: Props) {
   const { session } = useAuth();
+  const { accessError, hasAccess, isCheckingAccess } = useAdminAccessGuard(
+    session?.access_token,
+  );
 
   const [query, setQuery] = useState("");
   const [users, setUsers] = useState<AdminUserSummary[]>([]);
@@ -51,6 +58,13 @@ export default function AdminDashboardScreen({ navigation }: Props) {
     if (!token) {
       setUsers([]);
       setHasSearched(false);
+      return;
+    }
+
+    if (!hasAccess) {
+      setUsers([]);
+      setHasSearched(false);
+      setErrorMessage(null);
       return;
     }
 
@@ -85,118 +99,143 @@ export default function AdminDashboardScreen({ navigation }: Props) {
     }, 350);
 
     return () => clearTimeout(timeoutId);
-  }, [query, session?.access_token]);
+  }, [hasAccess, query, session?.access_token]);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.screen}>
-        <View style={styles.header}>
-          <Pressable onPress={() => navigation.goBack()} style={styles.backButton}>
-            <Text style={styles.backButtonText}>Back</Text>
-          </Pressable>
-          <Text style={styles.title}>Admin Dashboard</Text>
-          <Pressable onPress={() => navigation.navigate("AdminAuditLogs")} style={styles.actionButton}>
-            <Text style={styles.actionButtonText}>Logs</Text>
-          </Pressable>
-        </View>
+    <TouchableWithoutFeedback accessible={false} onPress={Keyboard.dismiss}>
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.screen}>
+          <View style={styles.header}>
+            <Pressable onPress={() => navigation.navigate("Discovery")} style={styles.backButton}>
+              <Text style={styles.backButtonText}>Back</Text>
+            </Pressable>
+            <Text style={styles.title}>Admin Dashboard</Text>
+            <View style={styles.backButtonPlaceholder} />
+          </View>
 
-        <View style={styles.heroCard}>
-          <Text style={styles.heroEyebrow}>User Search</Text>
-          <Text style={styles.heroTitle}>Find accounts by email or username</Text>
-          <Text style={styles.heroBody}>
-            Search results show account status at a glance, then open a user profile to manage moderation actions.
-          </Text>
-        </View>
-
-        <View style={styles.searchCard}>
-          <Text style={styles.label}>Search users</Text>
-          <TextInput
-            autoCapitalize="none"
-            autoCorrect={false}
-            onChangeText={setQuery}
-            placeholder="Enter email or username"
-            placeholderTextColor={colors.lightMuted}
-            style={styles.input}
-            value={query}
+          <AdminSectionTabs
+            activeTab="Users"
+            onNavigate={(route) => navigation.navigate(route)}
           />
-          <Text style={styles.helperText}>Type at least 2 characters to search.</Text>
-        </View>
 
-        {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
-
-        <ScrollView
-          contentContainerStyle={styles.resultsContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {isLoading ? (
+          {isCheckingAccess ? (
             <View style={styles.centerState}>
               <ActivityIndicator size="large" color={colors.accentPink} />
-              <Text style={styles.stateText}>Searching users...</Text>
+              <Text style={styles.stateText}>Checking admin access...</Text>
             </View>
           ) : null}
 
-          {!isLoading && !hasSearched ? (
+          {!isCheckingAccess && accessError ? (
             <View style={styles.centerState}>
-              <Text style={styles.stateTitle}>Start a search</Text>
+              <Text style={styles.stateTitle}>403 Forbidden</Text>
               <Text style={styles.stateText}>
-                Look up a user by email address or username to review their current account status.
+                Admin tools are restricted to approved moderators. This session cannot access admin endpoints.
               </Text>
             </View>
           ) : null}
 
-          {!isLoading && hasSearched && users.length === 0 ? (
-            <View style={styles.centerState}>
-              <Text style={styles.stateTitle}>No users found</Text>
-              <Text style={styles.stateText}>
-                Try a different email fragment or username.
-              </Text>
-            </View>
-          ) : null}
+          {!isCheckingAccess && hasAccess ? (
+            <>
+              <View style={styles.heroCard}>
+                <Text style={styles.heroEyebrow}>User Search</Text>
+                <Text style={styles.heroTitle}>Find accounts by email or username</Text>
+                <Text style={styles.heroBody}>
+                  Search results show account status at a glance, then open a user profile to manage moderation actions.
+                </Text>
+              </View>
 
-          {!isLoading &&
-            users.map((user) => (
-              <Pressable
-                key={user.user_id}
-                onPress={() => navigation.navigate("AdminUserProfile", { user })}
-                style={({ pressed }) => [
-                  styles.userCard,
-                  pressed && styles.userCardPressed,
-                ]}
+              <View style={styles.searchCard}>
+                <Text style={styles.label}>Search users</Text>
+                <TextInput
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  onChangeText={setQuery}
+                  placeholder="Enter email or username"
+                  placeholderTextColor={colors.lightMuted}
+                  style={styles.input}
+                  value={query}
+                />
+                <Text style={styles.helperText}>Type at least 2 characters to search.</Text>
+              </View>
+
+              {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+
+              <ScrollView
+                contentContainerStyle={styles.resultsContent}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
               >
-                <View style={styles.userHeaderRow}>
-                  <View style={styles.userIdentityBlock}>
-                    <Text style={styles.username}>{user.username}</Text>
-                    <Text style={styles.email}>{user.email}</Text>
+                {isLoading ? (
+                  <View style={styles.centerState}>
+                    <ActivityIndicator size="large" color={colors.accentPink} />
+                    <Text style={styles.stateText}>Searching users...</Text>
                   </View>
-                  <View
-                    style={[
-                      styles.statusPill,
-                      user.is_banned ? styles.statusPillBanned : styles.statusPillActive,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.statusPillText,
-                        user.is_banned
-                          ? styles.statusPillTextBanned
-                          : styles.statusPillTextActive,
-                      ]}
-                    >
-                      {getAccountStatusLabel(user)}
+                ) : null}
+
+                {!isLoading && !hasSearched ? (
+                  <View style={styles.centerState}>
+                    <Text style={styles.stateTitle}>Start a search</Text>
+                    <Text style={styles.stateText}>
+                      Look up a user by email address or username to review their current account status.
                     </Text>
                   </View>
-                </View>
+                ) : null}
 
-                <View style={styles.metaRow}>
-                  <Text style={styles.metaText}>{formatLastLogin(user.last_login)}</Text>
-                  {user.is_admin ? <Text style={styles.adminBadge}>Admin</Text> : null}
-                </View>
-              </Pressable>
-            ))}
-        </ScrollView>
-      </View>
-    </SafeAreaView>
+                {!isLoading && hasSearched && users.length === 0 ? (
+                  <View style={styles.centerState}>
+                    <Text style={styles.stateTitle}>No users found</Text>
+                    <Text style={styles.stateText}>
+                      Try a different email fragment or username.
+                    </Text>
+                  </View>
+                ) : null}
+
+                {!isLoading &&
+                  users.map((user) => (
+                    <Pressable
+                      key={user.user_id}
+                      onPress={() => navigation.navigate("AdminUserProfile", { user })}
+                      style={({ pressed }) => [
+                        styles.userCard,
+                        pressed && styles.userCardPressed,
+                      ]}
+                    >
+                      <View style={styles.userHeaderRow}>
+                        <View style={styles.userIdentityBlock}>
+                          <Text style={styles.username}>{user.username}</Text>
+                          <Text style={styles.email}>{user.email}</Text>
+                        </View>
+                        <View
+                          style={[
+                            styles.statusPill,
+                            user.is_banned ? styles.statusPillBanned : styles.statusPillActive,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.statusPillText,
+                              user.is_banned
+                                ? styles.statusPillTextBanned
+                                : styles.statusPillTextActive,
+                            ]}
+                          >
+                            {getAccountStatusLabel(user)}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.metaRow}>
+                        <Text style={styles.metaText}>{formatLastLogin(user.last_login)}</Text>
+                        {user.is_admin ? <Text style={styles.adminBadge}>Admin</Text> : null}
+                      </View>
+                    </Pressable>
+                  ))}
+              </ScrollView>
+            </>
+          ) : null}
+        </View>
+      </SafeAreaView>
+    </TouchableWithoutFeedback>
   );
 }
 
@@ -241,15 +280,6 @@ const styles = StyleSheet.create({
   },
   backButtonPlaceholder: {
     minWidth: 56,
-  },
-  actionButton: {
-    minWidth: 56,
-    alignItems: "flex-end",
-  },
-  actionButtonText: {
-    color: colors.accentPink,
-    fontSize: 15,
-    fontWeight: "700",
   },
   title: {
     color: colors.text,

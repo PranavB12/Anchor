@@ -8,9 +8,10 @@ from datetime import datetime, timezone
 from typing import Optional
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+from app.core.audit import log_action
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user_id
@@ -193,6 +194,7 @@ def search_users(
 def set_user_ban_status(
     target_user_id: str,
     body: BanUserRequest,
+    request: Request,
     user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
@@ -225,7 +227,32 @@ def set_user_ban_status(
             "target_user_id": target_user_id,
         },
     )
+
+    if body.is_banned:
+        db.execute(
+            text("""
+                UPDATE user_sessions
+                SET revoked_at = :now
+                WHERE user_id = :target_user_id
+                  AND revoked_at IS NULL
+            """),
+            {
+                "now": datetime.utcnow(),
+                "target_user_id": target_user_id,
+            },
+        )
+
     db.commit()
+
+    log_action(
+        db,
+        user_id,
+        "USER_BAN" if body.is_banned else "USER_UNBAN",
+        target_id=target_user_id,
+        target_type="USER",
+        metadata={"is_banned": body.is_banned},
+        request=request,
+    )
 
     status_label = "banned" if body.is_banned else "unbanned"
     return BanUserResponse(

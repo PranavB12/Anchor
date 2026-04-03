@@ -17,6 +17,7 @@ import EditProfileScreen from "../screens/EditProfileScreen";
 import AdminDashboardScreen from "../screens/AdminDashboardScreen";
 import AdminUserProfileScreen from "../screens/AdminUserProfileScreen";
 import AdminAuditLogsScreen from "../screens/AdminAuditLogsScreen";
+import AdminReportsScreen from "../screens/AdminReportsScreen";
 import type { AdminUserSummary } from "../services/adminService";
 
 export type RootStackParamList = {
@@ -33,6 +34,7 @@ export type RootStackParamList = {
   AdminDashboard: undefined;
   AdminUserProfile: { user: AdminUserSummary };
   AdminAuditLogs: undefined;
+  AdminReports: undefined;
 };
 
 import { createNavigationContainerRef } from "@react-navigation/native";
@@ -88,6 +90,7 @@ export default function AppNavigator() {
             <Stack.Screen name="AdminDashboard" component={AdminDashboardScreen} options={{ title: "Admin Dashboard" }} />
             <Stack.Screen name="AdminUserProfile" component={AdminUserProfileScreen} options={{ title: "Admin User Profile" }} />
             <Stack.Screen name="AdminAuditLogs" component={AdminAuditLogsScreen} options={{ title: "Admin Audit Logs" }} />
+            <Stack.Screen name="AdminReports" component={AdminReportsScreen} options={{ title: "Admin Reports" }} />
             <Stack.Screen
               name="EditAnchor"
               component={EditAnchor}

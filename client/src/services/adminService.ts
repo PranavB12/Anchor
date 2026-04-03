@@ -14,6 +14,32 @@ type AdminReportsProbe = {
   report_id: string;
 };
 
+export type AdminReport = {
+  report_id: string;
+  reason: string;
+  description?: string | null;
+  status: string;
+  created_at: string;
+  anchor_id: string;
+  anchor_title: string;
+  anchor_status: string;
+  anchor_latitude: number;
+  anchor_longitude: number;
+  reporter_id: string;
+  reporter_username: string;
+};
+
+type ResolveAdminReportRequest = {
+  action: "DISMISS" | "ACTION";
+  delete_anchor: boolean;
+};
+
+type ResolveAdminReportResponse = {
+  message: string;
+  report_id: string;
+  anchor_deleted: boolean;
+};
+
 type BanUserRequest = {
   is_banned: boolean;
 };
@@ -44,14 +70,45 @@ export type AuditLogsPaginatedResponse = {
 
 export async function canAccessAdminDashboard(token: string) {
   try {
-    await apiRequest<AdminReportsProbe[]>("/admin/reports?status=PENDING", {
-      method: "GET",
-      token,
-    });
+    await verifyAdminAccess(token);
     return true;
   } catch {
     return false;
   }
+}
+
+export async function verifyAdminAccess(token: string) {
+  return await apiRequest<AdminReportsProbe[]>("/admin/reports?status=PENDING", {
+    method: "GET",
+    token,
+  });
+}
+
+export async function fetchAdminReports(
+  token: string,
+  status = "PENDING",
+) {
+  const encodedStatus = encodeURIComponent(status);
+  return await apiRequest<AdminReport[]>(`/admin/reports?status=${encodedStatus}`, {
+    method: "GET",
+    token,
+  });
+}
+
+export async function resolveAdminReport(
+  reportId: string,
+  action: ResolveAdminReportRequest["action"],
+  deleteAnchor: boolean,
+  token: string,
+) {
+  return await apiRequest<ResolveAdminReportResponse>(`/admin/reports/${reportId}`, {
+    method: "PATCH",
+    token,
+    body: {
+      action,
+      delete_anchor: deleteAnchor,
+    } satisfies ResolveAdminReportRequest,
+  });
 }
 
 export async function searchAdminUsers(query: string, token: string) {

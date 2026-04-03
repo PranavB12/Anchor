@@ -31,6 +31,23 @@ async def lifespan(_app: FastAPI):
         if check_col and check_col[0] == 0:
             db.execute(text("ALTER TABLE users ADD COLUMN is_banned BOOLEAN NOT NULL DEFAULT FALSE"))
             db.commit()
+
+        db.execute(text("""
+            CREATE TABLE IF NOT EXISTS audit_logs (
+                log_id CHAR(36) PRIMARY KEY,
+                user_id CHAR(36) NOT NULL,
+                action_type VARCHAR(50) NOT NULL,
+                target_id CHAR(36) NULL,
+                target_type VARCHAR(50) NULL,
+                metadata JSON NULL,
+                ip_address VARCHAR(45) NULL,
+                timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+                INDEX idx_audit_user (user_id),
+                INDEX idx_audit_action (action_type)
+            )
+        """))
+        db.commit()
     finally:
         db.close()
 
