@@ -25,6 +25,27 @@ class ResolveReportRequest(BaseModel):
     action: str          # DISMISS | ACTION
     delete_anchor: bool = False
 
+
+class AdminUserSummaryResponse(BaseModel):
+    user_id: str
+    email: str
+    username: str
+    is_admin: bool = False
+    is_banned: bool = False
+    created_at: Optional[datetime] = None
+    last_login: Optional[datetime] = None
+
+
+class BanUserRequest(BaseModel):
+    is_banned: bool
+
+
+class BanUserResponse(BaseModel):
+    user_id: str
+    is_banned: bool
+    message: str
+
+
 class AuditLogResponse(BaseModel):
     log_id: str
     user_id: str

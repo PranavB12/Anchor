@@ -17,6 +17,9 @@ from app.core.dependencies import get_current_user_id
 from app.schemas.admin import (
     AdminReportResponse, 
     ResolveReportRequest, 
+    AdminUserSummaryResponse,
+    BanUserRequest,
+    BanUserResponse,
     AuditLogResponse, 
     AuditLogsPaginatedResponse
 )
@@ -33,6 +36,18 @@ def _require_admin(user_id: str, db: Session):
     ).fetchone()
     if not row or not row.is_admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+
+
+def _row_to_admin_user_summary(row) -> AdminUserSummaryResponse:
+    return AdminUserSummaryResponse(
+        user_id=row.user_id,
+        email=row.email,
+        username=row.username,
+        is_admin=bool(getattr(row, "is_admin", False)),
+        is_banned=bool(getattr(row, "is_banned", False)),
+        created_at=getattr(row, "created_at", None),
+        last_login=getattr(row, "last_login", None),
+    )
 
 
 @router.get("/reports", response_model=list[AdminReportResponse])
@@ -136,6 +151,88 @@ def resolve_report(
     db.commit()
 
     return {"message": f"Report {new_status.lower()}", "report_id": report_id, "anchor_deleted": body.delete_anchor}
+
+
+@router.get("/users", response_model=list[AdminUserSummaryResponse])
+@router.get("/users/search", response_model=list[AdminUserSummaryResponse])
+def search_users(
+    query: str = Query(..., min_length=1),
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    _require_admin(user_id, db)
+
+    normalized_query = f"%{query.strip().lower()}%"
+    rows = db.execute(
+        text("""
+            SELECT
+                user_id,
+                email,
+                username,
+                is_admin,
+                is_banned,
+                created_at,
+                last_login
+            FROM users
+            WHERE LOWER(email) LIKE :query
+               OR LOWER(username) LIKE :query
+            ORDER BY
+                is_admin DESC,
+                is_banned DESC,
+                last_login DESC,
+                created_at DESC
+            LIMIT 50
+        """),
+        {"query": normalized_query},
+    ).fetchall()
+
+    return [_row_to_admin_user_summary(row) for row in rows]
+
+
+@router.post("/users/{target_user_id}/ban", response_model=BanUserResponse)
+def set_user_ban_status(
+    target_user_id: str,
+    body: BanUserRequest,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    _require_admin(user_id, db)
+
+    if target_user_id == user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Admins cannot ban their own account",
+        )
+
+    existing = db.execute(
+        text("SELECT user_id, username FROM users WHERE user_id = :target_user_id"),
+        {"target_user_id": target_user_id},
+    ).fetchone()
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    db.execute(
+        text("""
+            UPDATE users
+            SET is_banned = :is_banned
+            WHERE user_id = :target_user_id
+        """),
+        {
+            "is_banned": body.is_banned,
+            "target_user_id": target_user_id,
+        },
+    )
+    db.commit()
+
+    status_label = "banned" if body.is_banned else "unbanned"
+    return BanUserResponse(
+        user_id=target_user_id,
+        is_banned=body.is_banned,
+        message=f"User {existing.username} {status_label} successfully",
+    )
 
 @router.get("/audit-logs", response_model=AuditLogsPaginatedResponse)
 def get_audit_logs(
