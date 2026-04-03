@@ -204,3 +204,79 @@ async def upload_file_content(
         mime_type=mime_type,
         file_name=file.filename,
     )
+
+
+# ── GET all content for an anchor ─────────────────────────────────────────────
+
+@router.get("/{anchor_id}/content", response_model=list[ContentResponse])
+def get_anchor_content(
+    anchor_id: str,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    creator_id = _get_anchor_creator(db, anchor_id)
+
+    rows = db.execute(
+        text("""
+            SELECT
+                c.content_id, c.content_type, c.size_bytes, c.uploaded_at,
+                tc.text_body, tc.language,
+                lc.url, lc.page_title, lc.preview_url,
+                mc.file_url, mc.mime_type, mc.file_name
+            FROM Content c
+            LEFT JOIN text_content  tc ON c.content_id = tc.content_id
+            LEFT JOIN link_content  lc ON c.content_id = lc.content_id
+            LEFT JOIN media_content mc ON c.content_id = mc.content_id
+            WHERE c.anchor_id = :anchor_id
+            ORDER BY c.uploaded_at ASC
+        """),
+        {"anchor_id": anchor_id},
+    ).fetchall()
+
+    return [
+        ContentResponse(
+            content_id=row.content_id,
+            anchor_id=anchor_id,
+            creator_id=creator_id,
+            content_type=row.content_type,
+            size_bytes=row.size_bytes,
+            uploaded_at=row.uploaded_at,
+            text_body=row.text_body,
+            language=row.language,
+            url=row.url,
+            page_title=row.page_title,
+            preview_url=row.preview_url,
+            file_url=row.file_url,
+            mime_type=row.mime_type,
+            file_name=row.file_name,
+        )
+        for row in rows
+    ]
+
+
+# ── DELETE a content item ──────────────────────────────────────────────────────
+
+@router.delete("/{anchor_id}/content/{content_id}")
+def delete_content(
+    anchor_id: str,
+    content_id: str,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    creator_id = _get_anchor_creator(db, anchor_id)
+    _require_creator(user_id, creator_id)
+
+    row = db.execute(
+        text("SELECT content_id FROM Content WHERE content_id = :content_id AND anchor_id = :anchor_id"),
+        {"content_id": content_id, "anchor_id": anchor_id},
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Content not found")
+
+    db.execute(
+        text("DELETE FROM Content WHERE content_id = :content_id"),
+        {"content_id": content_id},
+    )
+    db.commit()
+
+    return {"message": "Content deleted", "content_id": content_id}

@@ -1,4 +1,4 @@
-import { apiRequest } from "./api";
+import { apiRequest, API_BASE_URL } from "./api";
 
 export type AnchorVisibility = "PUBLIC" | "PRIVATE" | "CIRCLE_ONLY";
 
@@ -265,12 +265,10 @@ export async function uploadAnchorAttachment(
     type: mimeType,
   } as any);
 
-  // Directly hit the upload endpoint (currently unimplemented)
-  const response = await fetch(`http://10.0.2.2:8000/api/v1/anchors/${anchorId}/content`, {
+  const response = await fetch(`${API_BASE_URL}/anchors/${anchorId}/content`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
-      "Content-Type": "multipart/form-data",
     },
     body: formData,
   });
