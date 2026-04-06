@@ -15,6 +15,7 @@ from app.api.report import router as report_router
 from app.api.admin import router as admin_router
 from app.api.content import router as content_router
 from app.core.database import SessionLocal
+from app.api.circle import router as circle_router
 
 
 @asynccontextmanager
@@ -77,6 +78,7 @@ app.include_router(anchor_router)
 app.include_router(report_router)
 app.include_router(admin_router)
 app.include_router(content_router)
+app.include_router(circle_router)
 
 
 @app.get("/")
