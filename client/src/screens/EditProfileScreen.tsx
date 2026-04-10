@@ -13,7 +13,7 @@ import {
   TextInput,
   TouchableWithoutFeedback,
   View,
-  Switch, 
+  Switch,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -25,6 +25,15 @@ import {
   startBackgroundLocationTracking,
   stopBackgroundLocationTracking,
 } from "../services/locationTask";
+import {
+  checkBiometricAvailable,
+  clearBiometricSession,
+  getBiometricPreference,
+  getBiometricType,
+  promptBiometric,
+  saveBiometricSession,
+  setBiometricPreference,
+} from "../services/biometricService";
 
 type Props = NativeStackScreenProps<RootStackParamList, "EditProfile">;
 
@@ -40,7 +49,10 @@ export default function EditProfileScreen({ navigation }: Props) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isGhostMode, setIsGhostMode] = useState(false);
-
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [biometricEnabled, setBiometricEnabled] = useState(false);
+  const [biometricType, setBiometricType] = useState<"faceid" | "touchid" | "none">("none");
+  const [isTogglingBiometric, setIsTogglingBiometric] = useState(false);
 
   // Load current profile on mount and pre-fill all fields
   useEffect(() => {
@@ -58,9 +70,41 @@ export default function EditProfileScreen({ navigation }: Props) {
       } finally {
         setIsLoading(false);
       }
+
+      const available = await checkBiometricAvailable();
+      setBiometricAvailable(available);
+      if (available) {
+        setBiometricType(await getBiometricType());
+        setBiometricEnabled(await getBiometricPreference());
+      }
     };
     void load();
   }, [session]);
+
+  const biometricLabel = biometricType === "faceid" ? "Face ID" : "Touch ID";
+
+  const handleToggleBiometric = async (value: boolean) => {
+    if (isTogglingBiometric) return;
+    setIsTogglingBiometric(true);
+    try {
+      if (value) {
+        const success = await promptBiometric(`Enable ${biometricLabel} for Anchor`);
+        if (!success) return;
+        if (session) await saveBiometricSession(session);
+        await setBiometricPreference(true);
+        setBiometricEnabled(true);
+        Alert.alert(`${biometricLabel} Enabled`, `You can now sign in using ${biometricLabel}.`);
+      } else {
+        await clearBiometricSession();
+        await setBiometricPreference(false);
+        setBiometricEnabled(false);
+      }
+    } catch {
+      Alert.alert("Error", "Could not update biometric settings.");
+    } finally {
+      setIsTogglingBiometric(false);
+    }
+  };
 
   const handleSave = async () => {
     Keyboard.dismiss();
@@ -217,6 +261,27 @@ export default function EditProfileScreen({ navigation }: Props) {
                   thumbColor={colors.white}
                 />
               </View>
+
+              {biometricAvailable && (
+                <>
+                  <Text style={styles.label}>{biometricLabel} Login</Text>
+                  <View style={styles.ghostModeRow}>
+                    <Text style={styles.ghostModeDescription}>
+                      Sign in instantly using {biometricLabel}
+                    </Text>
+                    {isTogglingBiometric ? (
+                      <ActivityIndicator size="small" color={colors.accentPink} />
+                    ) : (
+                      <Switch
+                        value={biometricEnabled}
+                        onValueChange={(val) => void handleToggleBiometric(val)}
+                        trackColor={{ false: colors.border, true: colors.accentPink }}
+                        thumbColor={colors.white}
+                      />
+                    )}
+                  </View>
+                </>
+              )}
 
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
 

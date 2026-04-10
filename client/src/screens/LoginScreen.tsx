@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import * as Google from "expo-auth-session/providers/google";
 import * as WebBrowser from "expo-web-browser";
@@ -16,10 +16,18 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Feather } from "@expo/vector-icons";
 
 import type { RootStackParamList } from "../navigation/AppNavigator";
 import { useAuth } from "../context/AuthContext";
 import { login, oauthLogin } from "../services/authService";
+import {
+  checkBiometricAvailable,
+  getBiometricPreference,
+  getBiometricType,
+  loadBiometricSession,
+  promptBiometric,
+} from "../services/biometricService";
 import AnchorLogo from "../../assets/anchor-logo.svg";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Login">;
@@ -52,9 +60,50 @@ export default function LoginScreen({ navigation }: Props) {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
+  const [isBiometricSubmitting, setIsBiometricSubmitting] = useState(false);
+  const [showBiometricButton, setShowBiometricButton] = useState(false);
+  const [biometricType, setBiometricType] = useState<"faceid" | "touchid" | "none">("none");
+
+  useEffect(() => {
+    const checkBiometric = async () => {
+      const available = await checkBiometricAvailable();
+      if (!available) return;
+      const enabled = await getBiometricPreference();
+      if (!enabled) return;
+      const session = await loadBiometricSession();
+      if (!session) return;
+      setShowBiometricButton(true);
+      setBiometricType(await getBiometricType());
+    };
+    void checkBiometric();
+  }, []);
+
+  const handleBiometricLogin = async () => {
+    setError(null);
+    setIsBiometricSubmitting(true);
+    try {
+      const success = await promptBiometric("Sign in to Anchor");
+      if (!success) {
+        setError("Biometric authentication failed or was cancelled.");
+        return;
+      }
+      const stored = await loadBiometricSession();
+      if (!stored) {
+        setError("No saved session found. Please sign in with your password.");
+        setShowBiometricButton(false);
+        return;
+      }
+      await signIn(stored);
+      navigation.navigate("Discovery");
+    } catch {
+      setError("Biometric sign-in failed. Please use your password.");
+    } finally {
+      setIsBiometricSubmitting(false);
+    }
+  };
 
   const isGoogleConfigured = Boolean(activeGoogleClientId);
-  const isAnySubmitting = isSubmitting || isGoogleSubmitting;
+  const isAnySubmitting = isSubmitting || isGoogleSubmitting || isBiometricSubmitting;
 
   const exchangeGoogleCodeForIdToken = async (code: string) => {
     if (!activeGoogleClientId || !googleRequest?.codeVerifier || !googleRequest.redirectUri) {
@@ -296,6 +345,39 @@ export default function LoginScreen({ navigation }: Props) {
                 )}
               </Pressable>
 
+              {showBiometricButton && (
+                <>
+                  <View style={styles.dividerRow}>
+                    <View style={styles.dividerLine} />
+                    <Text style={styles.dividerText}>or</Text>
+                    <View style={styles.dividerLine} />
+                  </View>
+                  <Pressable
+                    disabled={isAnySubmitting}
+                    onPress={() => void handleBiometricLogin()}
+                    style={({ pressed }) => [
+                      styles.biometricButton,
+                      (pressed || isAnySubmitting) && styles.primaryButtonPressed,
+                    ]}
+                  >
+                    {isBiometricSubmitting ? (
+                      <ActivityIndicator color={colors.accentPink} />
+                    ) : (
+                      <>
+                        <Feather
+                          name={biometricType === "faceid" ? "smile" : "unlock"}
+                          size={18}
+                          color={colors.accentPink}
+                        />
+                        <Text style={styles.biometricButtonText}>
+                          Sign in with {biometricType === "faceid" ? "Face ID" : "Touch ID"}
+                        </Text>
+                      </>
+                    )}
+                  </Pressable>
+                </>
+              )}
+
               <View style={styles.footerRow}>
                 <Text style={styles.footerText}>Don&apos;t have an account?</Text>
                 <Pressable onPress={() => navigation.navigate("Register")}>
@@ -525,5 +607,22 @@ const styles = StyleSheet.create({
   },
   buttonContainer: {
     marginTop: 20,
-  }
+  },
+  biometricButton: {
+    minHeight: 48,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.accentPink,
+    backgroundColor: "#fff6f8",
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 12,
+  },
+  biometricButtonText: {
+    color: colors.accentPink,
+    fontSize: 15,
+    fontWeight: "600",
+  },
 });
