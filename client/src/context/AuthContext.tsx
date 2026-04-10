@@ -18,6 +18,11 @@ import {
   saveAuthSession,
   type StoredAuthSession,
 } from "../services/authStorage";
+import {
+  clearBiometricSession,
+  getBiometricPreference,
+  saveBiometricSession,
+} from "../services/biometricService";
 
 type AuthStatus = "loading" | "authenticated" | "unauthenticated";
 
@@ -110,6 +115,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
       token_type: payload.token_type,
     };
     await saveAuthSession(nextSession);
+    // Keep the biometrically stored session up to date so tokens don't go stale
+    const biometricEnabled = await getBiometricPreference();
+    if (biometricEnabled) {
+      await saveBiometricSession(nextSession);
+    }
     setSession(nextSession);
     setStatus("authenticated");
   };
@@ -124,6 +134,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       }
     }
     await clearAuthSession();
+    await clearBiometricSession();
     setSession(null);
     setStatus("unauthenticated");
   };
