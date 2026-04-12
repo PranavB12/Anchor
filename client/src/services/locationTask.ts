@@ -9,6 +9,9 @@ import { getDistanceFromLatLonInM } from '../utils/distance';
 export const LOCATION_TASK_NAME = 'background-location-task';
 export const GHOST_MODE_STORAGE_KEY = 'anchor.user.ghost_mode.v1';
 const AUTH_SESSION_STORAGE_KEY = 'anchor.auth.session.v1';
+const LAST_NOTIF_TIME_KEY = 'anchor.notif.last_time';
+const LAST_POS_KEY = 'anchor.notif.last_pos';
+const PENDING_ANCHORS_KEY = 'anchor.notif.pending';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -51,6 +54,17 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
     console.log(`[BG_TASK] Polled Location: Lat ${lat}, Lon ${lon}`);
     console.log(`================================`);
 
+    // 1. Distance Throttling (100m)
+    const lastPosStr = await AsyncStorage.getItem(LAST_POS_KEY);
+    if (lastPosStr) {
+      const { lat: lastLat, lon: lastLon } = JSON.parse(lastPosStr);
+      const distFromLast = getDistanceFromLatLonInM(lat, lon, lastLat, lastLon);
+      if (distFromLast < 100) {
+        console.log(`[BG_TASK] Moved only ${distFromLast.toFixed(1)}m. Skipping nearby check (Threshold: 100m).`);
+        return;
+      }
+    }
+
     // Stop execution if app is in foreground and we only want background logs
     if (AppState.currentState === 'active') {
       console.log("[BG_TASK] App is actively open on screen. Skipping background notification checks to avoid spam.");
@@ -68,10 +82,8 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
         lat, lon, radiusKm: 2,
       }, session.access_token, true);
 
-      let newlyDiscoveredCount = 0;
-      let firstName = "";
-      let firstAnchorId = "";
-      let firstDistance = 0;
+      const pendingStr = await AsyncStorage.getItem(PENDING_ANCHORS_KEY);
+      let pendingAnchors: { id: string, title: string, dist: number }[] = pendingStr ? JSON.parse(pendingStr) : [];
 
       for (const anchor of anchors) {
         if (anchor.status !== 'ACTIVE') continue;
@@ -81,31 +93,49 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
 
         if (dist <= anchor.unlock_radius + 5) {
           console.log(`[BG_TASK]   +++ '${anchor.title}' IS IN RANGE! +++`);
-          newlyDiscoveredCount++;
-          if (!firstName) {
-            firstName = anchor.title;
-            firstAnchorId = anchor.anchor_id;
-            firstDistance = dist;
+          
+          // Only add if not already in pending
+          if (!pendingAnchors.find(p => p.id === anchor.anchor_id)) {
+            pendingAnchors.push({ id: anchor.anchor_id, title: anchor.title, dist });
           }
+
           try {
             unlockAnchor(anchor.anchor_id, session.access_token);
           } catch (e) { }
         }
       }
 
-      if (newlyDiscoveredCount > 0) {
-        console.log("[BG_TASK] MATCH FOUND! TRIGGERING PUSH NOTIFICATION...");
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: "New Anchors Nearby!",
-            body: `You unlocked '${firstName}' (${firstDistance.toFixed(0)}m away). ${newlyDiscoveredCount > 1 ? `And ${newlyDiscoveredCount - 1} others!` : ''}`,
-            sound: false,
-            data: { anchor_id: firstAnchorId },
-          },
-          trigger: null,
-        });
+      // Save new position as the last triggered position
+      await AsyncStorage.setItem(LAST_POS_KEY, JSON.stringify({ lat, lon }));
+
+      if (pendingAnchors.length > 0) {
+        const lastNotifStr = await AsyncStorage.getItem(LAST_NOTIF_TIME_KEY);
+        const lastNotifTime = lastNotifStr ? parseInt(lastNotifStr, 10) : 0;
+        const now = Date.now();
+        const twentyMins = 20 * 60 * 1000;
+
+        if (now - lastNotifTime >= twentyMins) {
+          console.log("[BG_TASK] 20 MINUTE SPAN REACHED! TRIGGERING SUMMARY PUSH NOTIFICATION...");
+          
+          const first = pendingAnchors[0];
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: "Discoveries Nearby!",
+              body: `You found ${pendingAnchors.length} new anchors. Tap to view '${first.title}'.`,
+              sound: false,
+              data: { anchor_id: first.id }, // App.tsx looks for anchor_id
+            },
+            trigger: null,
+          });
+
+          await AsyncStorage.setItem(LAST_NOTIF_TIME_KEY, String(now));
+          await AsyncStorage.removeItem(PENDING_ANCHORS_KEY);
+        } else {
+          console.log(`[BG_TASK] ${pendingAnchors.length} anchors pending. Waiting for 20min window...`);
+          await AsyncStorage.setItem(PENDING_ANCHORS_KEY, JSON.stringify(pendingAnchors));
+        }
       } else {
-        console.log("[BG_TASK] No anchors in range. Notification skipped.");
+        console.log("[BG_TASK] No new anchors in range.");
       }
 
     } catch (err) {

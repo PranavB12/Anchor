@@ -291,6 +291,7 @@ export default function DiscoveryScreen({ route }: Props) {
 
 
   const [anchorLocation, setAnchorLocation] = useState<Coordinate | null>(null);
+  const [anchorAltitude, setAnchorAltitude] = useState<number | null>(null);
   const [editingAnchor, setEditingAnchor] = useState<AnchorWithDerivedFields | null>(null);
   const [radius, setRadius] = useState(50);
 
@@ -390,7 +391,7 @@ export default function DiscoveryScreen({ route }: Props) {
     }
   }, [route.params?.targetAnchorId, anchors, animateSheet]);
 
-  // The broken useEffect was removed from here.
+
   const collapseSheet = useCallback(() => {
     Keyboard.dismiss();
     listScrollOffset.current = 0;
@@ -478,9 +479,9 @@ export default function DiscoveryScreen({ route }: Props) {
           const lockMeta = getLockMeta(anchor);
           const distanceMeters = userCoordinate
             ? getDistanceFromLatLonInM(
-                userCoordinate[1], userCoordinate[0],
-                anchor.latitude, anchor.longitude,
-              )
+              userCoordinate[1], userCoordinate[0],
+              anchor.latitude, anchor.longitude,
+            )
             : null;
           return {
             ...anchor,
@@ -612,8 +613,6 @@ export default function DiscoveryScreen({ route }: Props) {
     };
   }, [isGhostMode, ghostModeLoaded]);
 
-  // Recompute distance/isWithinRadius instantly when location updates,
-  // without waiting for a full API re-fetch.
   useEffect(() => {
     if (!userCoordinate) return;
     setAnchors((prev) =>
@@ -892,6 +891,7 @@ export default function DiscoveryScreen({ route }: Props) {
       accuracy: Location.Accuracy.High,
     });
     setAnchorLocation([location.coords.longitude, location.coords.latitude]);
+    setAnchorAltitude(location.coords.altitude);
     setUserCoordinate([location.coords.longitude, location.coords.latitude]);
 
     animateSheet(true);
@@ -1007,6 +1007,12 @@ export default function DiscoveryScreen({ route }: Props) {
                   </TouchableOpacity>
                 ) : null}
                 <TouchableOpacity
+                  style={styles.profileButton}
+                  onPress={() => navigation.navigate("AR")}
+                >
+                  <Feather name="layers" size={18} color={colors.accentPink} />
+                </TouchableOpacity>
+                <TouchableOpacity
                   testID="open-profile-button"
                   style={styles.profileButton}
                   onPress={() => navigation.navigate("EditProfile")}
@@ -1106,10 +1112,15 @@ export default function DiscoveryScreen({ route }: Props) {
               <TouchableOpacity
                 style={styles.nextButton}
                 onPress={() => {
+                  if (!anchorLocation) return;
+                  const [lon, lat] = anchorLocation;
+                  const alt = anchorAltitude;
                   setAnchorLocation(null);
+                  setAnchorAltitude(null);
                   navigation.navigate('AnchorCreation', {
-                    latitude: anchorLocation[1],
-                    longitude: anchorLocation[0],
+                    latitude: lat,
+                    longitude: lon,
+                    altitude: alt,
                     radius
                   });
                 }}
@@ -1174,7 +1185,7 @@ export default function DiscoveryScreen({ route }: Props) {
             </View>
 
             <ScrollView contentContainerStyle={styles.detailScrollContent} showsVerticalScrollIndicator={false}>
-              
+
               <View style={styles.detailTopSection}>
                 <View style={[styles.detailStatusRow, selectedAnchor.isUnlocked ? styles.detailStatusRowUnlocked : styles.detailStatusRowLocked]}>
                   <Feather name={selectedAnchor.isUnlocked ? "unlock" : "lock"} size={12} color={selectedAnchor.isUnlocked ? colors.success : colors.accentPink} />
@@ -1260,13 +1271,13 @@ export default function DiscoveryScreen({ route }: Props) {
                   </View>
                   {selectedAnchor.creator_id === session?.user_id && (
                     <View style={styles.detailInfoItem}>
-                       <View style={styles.detailInfoIconSection}>
-                         <Feather name="unlock" size={16} color={colors.accentPink} />
-                       </View>
-                       <View style={styles.detailInfoTextSection}>
-                         <Text style={styles.detailInfoLabel}>Unlocks</Text>
-                         <Text style={styles.detailInfoValue}>{selectedAnchor.max_unlock === null ? `${selectedAnchor.current_unlock}` : `${selectedAnchor.current_unlock} / ${selectedAnchor.max_unlock}`}</Text>
-                       </View>
+                      <View style={styles.detailInfoIconSection}>
+                        <Feather name="unlock" size={16} color={colors.accentPink} />
+                      </View>
+                      <View style={styles.detailInfoTextSection}>
+                        <Text style={styles.detailInfoLabel}>Unlocks</Text>
+                        <Text style={styles.detailInfoValue}>{selectedAnchor.max_unlock === null ? `${selectedAnchor.current_unlock}` : `${selectedAnchor.current_unlock} / ${selectedAnchor.max_unlock}`}</Text>
+                      </View>
                     </View>
                   )}
                   <View style={styles.detailInfoItem}>

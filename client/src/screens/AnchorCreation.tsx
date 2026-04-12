@@ -39,7 +39,7 @@ type ContentType = "text" | "file" | "link";
 
 
 export default function AnchorCreation({ navigation, route }: Props) {
-  const { latitude, longitude, radius } = route.params;
+  const { latitude, longitude, altitude, radius } = route.params;
   const { session } = useAuth();
   const insets = useSafeAreaInsets();
   const [title, setTitle] = useState("");
@@ -273,6 +273,7 @@ export default function AnchorCreation({ navigation, route }: Props) {
       title: title.trim(),
       latitude,
       longitude,
+      altitude,
       visibility: visibilityMap[visibility],
       unlock_radius: Math.max(10, Math.min(100, Math.round(radius))),
       activation_time: finalActivationTime,

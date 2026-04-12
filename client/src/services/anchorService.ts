@@ -32,7 +32,7 @@ export type CreateAnchorBody = {
   description?: string | null;
   latitude: number;
   longitude: number;
-  altitude?: number | null;
+  altitude: number | null;
   visibility: "PUBLIC" | "PRIVATE" | "CIRCLE_ONLY";
   unlock_radius: number;
   max_unlock?: number | null;
@@ -47,6 +47,7 @@ export type AnchorDraft = {
   description: string | null;
   latitude: number;
   longitude: number;
+  altitude: number | null;
   visibility: AnchorVisibility;
   unlock_radius: number;
   max_unlock: number | null;

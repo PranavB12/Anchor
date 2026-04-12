@@ -7,7 +7,7 @@ import { AnchorDraft, NearbyAnchor } from "../services/anchorService";
 import LoginScreen from "../screens/LoginScreen";
 import RegisterScreen from "../screens/RegisterScreen";
 import DiscoveryScreen from "../screens/DiscoveryScreen";
-import MapScreen from "../screens/MapScreen";
+import ARScreen from "../screens/ARScreen";
 import AnchorCreation from "../screens/AnchorCreation";
 import AnchorPreviewScreen from "../screens/AnchorPreviewScreen";
 import EditAnchor from "../screens/EditAnchor";
@@ -27,8 +27,8 @@ export type RootStackParamList = {
   ForgotPassword: undefined;
   ResetPassword: { token: string };
   Discovery: { targetAnchorId?: string } | undefined;
-  Map: undefined;
-  AnchorCreation: { latitude: number; longitude: number; radius: number };
+  AnchorCreation: { latitude: number; longitude: number; altitude: number | null; radius: number };
+  AR: undefined;
   AnchorPreview: { draft: AnchorDraft };
   EditAnchor: { anchor: NearbyAnchor; radius: number };
   EditProfile: undefined;
@@ -85,7 +85,7 @@ export default function AppNavigator() {
         {status === "authenticated" && session ? (
           <>
             <Stack.Screen name="Discovery" component={DiscoveryScreen} options={{ title: "Discover" }} />
-            <Stack.Screen name="Map" component={MapScreen} options={{ title: "Anchor Map" }} />
+            <Stack.Screen name="AR" component={ARScreen} options={{ title: "AR View" }} />
             <Stack.Screen name="AnchorCreation" component={AnchorCreation} options={{ title: "Anchor Details" }} />
             <Stack.Screen name="AnchorPreview" component={AnchorPreviewScreen} options={{ title: "Preview Anchor" }} />
             <Stack.Screen name="EditProfile" component={EditProfileScreen} options={{ title: "Edit Profile" }} />

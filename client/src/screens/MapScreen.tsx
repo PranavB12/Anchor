@@ -4,6 +4,7 @@ import Mapbox from '@rnmapbox/maps';
 import * as Location from 'expo-location';
 import Slider from '@react-native-community/slider';
 import circle from '@turf/circle';
+import { Feather } from "@expo/vector-icons";
 
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useNavigation } from "@react-navigation/native";
@@ -69,6 +70,7 @@ export default function MapScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [anchorLocation, setAnchorLocation] = useState<number[] | null>(null);
+  const [anchorAltitude, setAnchorAltitude] = useState<number | null>(null);
   const [radius, setRadius] = useState(50)
 
   useEffect(() => {
@@ -85,6 +87,7 @@ export default function MapScreen() {
       accuracy: Location.Accuracy.High,
     });
     setAnchorLocation([location.coords.longitude, location.coords.latitude]);
+    setAnchorAltitude(location.coords.altitude);
   };
   const radiusShape = useMemo(() => {
     if (!anchorLocation) return undefined;
@@ -167,6 +170,16 @@ export default function MapScreen() {
           </>
         )}
       </Mapbox.MapView>
+
+      <TouchableOpacity 
+        style={[styles.arToggleButton, { top: insets.top + 20 }]} 
+        onPress={() => navigation.navigate('AR')}
+        activeOpacity={0.8}
+      >
+        <Feather name="layers" size={20} color={colors.white} />
+        <Text style={styles.arToggleText}>AR Mode</Text>
+      </TouchableOpacity>
+
       {!anchorLocation && (
         <View style={[styles.buttonContainer, { bottom: 60 + insets.bottom }]}>
           <TouchableOpacity style={styles.dropAnchorButton} onPress={handleDropAnchor}>
@@ -200,7 +213,12 @@ export default function MapScreen() {
             <Text style={styles.sliderLabelText}>100m</Text>
           </View>
 
-          <TouchableOpacity style={styles.nextButton} onPress={() => navigation.navigate('AnchorCreation', { latitude: anchorLocation[1], longitude: anchorLocation[0], radius })}>
+          <TouchableOpacity style={styles.nextButton} onPress={() => navigation.navigate('AnchorCreation', { 
+            latitude: anchorLocation[1], 
+            longitude: anchorLocation[0], 
+            altitude: anchorAltitude,
+            radius 
+          })}>
             <Text style={styles.nextButtonText}>Next</Text>
           </TouchableOpacity>
         </View>
@@ -310,5 +328,26 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  arToggleButton: {
+    position: 'absolute',
+    right: 20,
+    backgroundColor: colors.text,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 25,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  arToggleText: {
+    color: colors.white,
+    fontSize: 14,
+    fontWeight: '700',
+    marginLeft: 8,
   },
 });
