@@ -1,3 +1,4 @@
+from datetime import datetime
 from pydantic import BaseModel, EmailStr
 from typing import Optional
 
@@ -17,3 +18,14 @@ class ProfileResponse(BaseModel):
     bio: Optional[str] = None
     avatar_url: Optional[str] = None
     is_ghost_mode: bool
+
+
+class BlockUserRequest(BaseModel):
+    blocked_user_id: str
+
+
+class BlockedUserResponse(BaseModel):
+    user_id: str
+    username: str
+    avatar_url: Optional[str] = None
+    blocked_at: datetime
