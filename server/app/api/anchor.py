@@ -191,6 +191,15 @@ def _creator_is_not_banned_clause(table_alias: str) -> str:
     )
 
 
+def _creator_is_not_blocked_clause(table_alias: str) -> str:
+    return (
+        f" AND NOT EXISTS ("
+        f"SELECT 1 FROM blocked_users bu "
+        f"WHERE bu.blocker_id = :session_user_id "
+        f"AND bu.blocked_user_id = {table_alias}.creator_id)"
+    )
+
+
 def _build_anchor_filters(
     table_alias: str,
     visibility=None,
@@ -670,7 +679,8 @@ def get_all_anchors(
         content_type=content_type,
         tags=tags,
     )
-    filters = _creator_is_not_banned_clause("a") + filters
+    filter_params["session_user_id"] = user_id
+    filters = _creator_is_not_banned_clause("a") + _creator_is_not_blocked_clause("a") + filters
 
     rows = db.execute(
         text(f"""
@@ -719,12 +729,14 @@ def get_nearby_anchor_filter_options(
     params = {
         "radius_m": radius_km * 1000,
         "user_point": f"POINT({lon} {lat})",
+        "session_user_id": user_id,
     }
     filters = """
         AND (a.activation_time IS NULL OR a.activation_time <= UTC_TIMESTAMP())
         AND (a.expiration_time IS NULL OR a.expiration_time >= UTC_TIMESTAMP())
     """
     filters += _creator_is_not_banned_clause("a")
+    filters += _creator_is_not_blocked_clause("a")
     extra_filters, extra_params = _build_anchor_filters(
         table_alias="a",
         visibility=visibility,
@@ -833,6 +845,7 @@ def get_nearby_anchors(
         AND (a.expiration_time IS NULL OR a.expiration_time >= UTC_TIMESTAMP())
     """
     filters += _creator_is_not_banned_clause("a")
+    filters += _creator_is_not_blocked_clause("a")
 
     extra_filters, extra_params = _build_anchor_filters(
         table_alias="a",
