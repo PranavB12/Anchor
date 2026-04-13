@@ -32,6 +32,95 @@ class CircleMemberResponse(BaseModel):
 class InviteMemberRequest(BaseModel):
     username: str
 
+# ── Search Schemas ────────────────────────────────────────────────────────────
+
+class CircleSearchResult(BaseModel):
+    circle_id: str
+    name: str
+    description: Optional[str] = None
+    member_count: int
+    is_member: bool
+
+
+# ── Search Public Circles (US8 Task 1) ────────────────────────────────────────
+
+@router.get("/search", response_model=List[CircleSearchResult])
+def search_circles(
+    q: str = "",
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    rows = db.execute(
+        text("""
+            SELECT
+                c.circle_id,
+                c.name,
+                c.description,
+                COUNT(cm.user_id) AS member_count,
+                MAX(CASE WHEN cm.user_id = :user_id THEN 1 ELSE 0 END) AS is_member
+            FROM circles c
+            LEFT JOIN circle_members cm ON cm.circle_id = c.circle_id
+            WHERE c.visibility = 'PUBLIC'
+              AND (c.name LIKE :query OR c.description LIKE :query)
+            GROUP BY c.circle_id, c.name, c.description
+            ORDER BY member_count DESC
+        """),
+        {"query": f"%{q}%", "user_id": user_id},
+    ).fetchall()
+
+    return [
+        CircleSearchResult(
+            circle_id=row.circle_id,
+            name=row.name,
+            description=row.description,
+            member_count=row.member_count,
+            is_member=bool(row.is_member),
+        )
+        for row in rows
+    ]
+
+
+# ── Join Circle (US8 Task 3) ──────────────────────────────────────────────────
+
+@router.post("/{circle_id}/join", status_code=status.HTTP_201_CREATED)
+def join_circle(
+    circle_id: str,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    circle = _get_circle(db, circle_id)
+    if not circle:
+        raise HTTPException(status_code=404, detail="Circle not found")
+
+    if circle.visibility != "PUBLIC":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This circle is private and cannot be joined directly",
+        )
+
+    already_member = db.execute(
+        text("""
+            SELECT 1 FROM circle_members
+            WHERE circle_id = :circle_id AND user_id = :user_id
+        """),
+        {"circle_id": circle_id, "user_id": user_id},
+    ).fetchone()
+
+    if already_member:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="You are already a member of this circle",
+        )
+
+    db.execute(
+        text("""
+            INSERT INTO circle_members (circle_id, user_id)
+            VALUES (:circle_id, :user_id)
+        """),
+        {"circle_id": circle_id, "user_id": user_id},
+    )
+    db.commit()
+    return {"message": "Successfully joined the circle"}
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 

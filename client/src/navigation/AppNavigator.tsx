@@ -20,6 +20,8 @@ import AdminAuditLogsScreen from "../screens/AdminAuditLogsScreen";
 import AdminReportsScreen from "../screens/AdminReportsScreen";
 import CircleMembersScreen from "../screens/CircleMembersScreen";
 import type { AdminUserSummary } from "../services/adminService";
+import CircleSearchScreen from "../screens/CircleSearchScreen";
+
 
 export type RootStackParamList = {
   Login: undefined;
@@ -37,6 +39,7 @@ export type RootStackParamList = {
   AdminAuditLogs: undefined;
   AdminReports: undefined;
   CircleMembers: { circleId: string; circleName: string; isOwner: boolean };
+  CircleSearch: undefined;
 };
 
 import { createNavigationContainerRef } from "@react-navigation/native";
@@ -94,6 +97,7 @@ export default function AppNavigator() {
             <Stack.Screen name="AdminAuditLogs" component={AdminAuditLogsScreen} options={{ title: "Admin Audit Logs" }} />
             <Stack.Screen name="AdminReports" component={AdminReportsScreen} options={{ title: "Admin Reports" }} />
             <Stack.Screen name="CircleMembers" component={CircleMembersScreen} options={{ title: "Circle Members" }} />
+            <Stack.Screen name="CircleSearch" component={CircleSearchScreen} options={{ title: "Discover Circles" }} />
             <Stack.Screen
               name="EditAnchor"
               component={EditAnchor}
