@@ -28,3 +28,25 @@ export function removeCircleMember(circleId: string, userId: string, token: stri
     token,
   });
 }
+
+export type CircleSearchResult = {
+  circle_id: string;
+  name: string;
+  description: string | null;
+  member_count: number;
+  is_member: boolean;
+};
+
+export function searchCircles(query: string, token: string) {
+  return apiRequest<CircleSearchResult[]>(`/circles/search?q=${encodeURIComponent(query)}`, {
+    method: "GET",
+    token,
+  });
+}
+
+export function joinCircle(circleId: string, token: string) {
+  return apiRequest<{ message: string }>(`/circles/${circleId}/join`, {
+    method: "POST",
+    token,
+  });
+}
