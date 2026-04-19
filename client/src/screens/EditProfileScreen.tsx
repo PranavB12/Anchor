@@ -352,6 +352,36 @@ export default function EditProfileScreen({ navigation }: Props) {
 
               <View style={styles.sectionHeader}>
                 <View>
+                  <Text style={styles.sectionTitle}>Circles</Text>
+                  <Text style={styles.sectionDescription}>
+                    Create a circle for the people who should see group-only anchors.
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.circleActions}>
+                <Pressable
+                  onPress={() => navigation.navigate("CreateCircle")}
+                  style={({ pressed }) => [
+                    styles.circleActionButton,
+                    (pressed || isSubmitting || isLoggingOut) && styles.primaryButtonPressed,
+                  ]}
+                >
+                  <Text style={styles.circleActionPrimaryText}>Create Circle</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => navigation.navigate("CircleSearch")}
+                  style={({ pressed }) => [
+                    styles.circleActionSecondaryButton,
+                    (pressed || isSubmitting || isLoggingOut) && styles.primaryButtonPressed,
+                  ]}
+                >
+                  <Text style={styles.circleActionSecondaryText}>Discover Circles</Text>
+                </Pressable>
+              </View>
+
+              <View style={styles.sectionHeader}>
+                <View>
                   <Text style={styles.sectionTitle}>Blocked Users</Text>
                   <Text style={styles.sectionDescription}>
                     People here stay hidden from Discovery until you unblock them.
@@ -634,6 +664,35 @@ const styles = StyleSheet.create({
   unblockButtonText: {
     color: colors.accentPink,
     fontSize: 13,
+    fontWeight: "700",
+  },
+  circleActions: {
+    gap: 10,
+  },
+  circleActionButton: {
+    minHeight: 46,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.accentPink,
+  },
+  circleActionSecondaryButton: {
+    minHeight: 46,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: "#fffaf6",
+  },
+  circleActionPrimaryText: {
+    color: colors.white,
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  circleActionSecondaryText: {
+    color: colors.accentPink,
+    fontSize: 15,
     fontWeight: "700",
   },
 });
