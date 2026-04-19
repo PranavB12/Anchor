@@ -80,6 +80,17 @@ def _bootstrap_core_tables():
                 FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
             )
         """))
+        check_circle_id_col = db.execute(
+            text("SHOW COLUMNS FROM anchors LIKE 'circle_id'")
+        ).fetchone()
+        if check_circle_id_col is None:
+            db.execute(text("ALTER TABLE anchors ADD COLUMN circle_id CHAR(36) NULL"))
+            db.execute(text("ALTER TABLE anchors ADD INDEX idx_anchors_circle_id (circle_id)"))
+            db.execute(text("""
+                ALTER TABLE anchors
+                ADD CONSTRAINT fk_anchors_circle_id
+                FOREIGN KEY (circle_id) REFERENCES circles(circle_id) ON DELETE SET NULL
+            """))
         db.commit()
     finally:
         db.close()

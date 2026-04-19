@@ -50,7 +50,7 @@ def _get_anchor_by_id(db: Session, anchor_id: str):
     """
     row = db.execute(
         text("""
-            SELECT a.anchor_id, a.creator_id, a.title, a.description,
+            SELECT a.anchor_id, a.creator_id, a.circle_id, a.title, a.description,
                    ST_X(a.location) AS longitude, ST_Y(a.location) AS latitude,
                    a.altitude, a.status, a.visibility, a.unlock_radius,
                    a.max_unlock, a.current_unlock, a.activation_time,
@@ -66,6 +66,125 @@ def _get_anchor_by_id(db: Session, anchor_id: str):
         {"anchor_id": anchor_id},
     ).fetchone()
     return row
+
+
+def _get_circle_for_access(db: Session, circle_id: str, user_id: str):
+    return db.execute(
+        text("""
+            SELECT
+                c.circle_id,
+                c.owner_id,
+                MAX(CASE WHEN cm.user_id = :user_id THEN 1 ELSE 0 END) AS is_member
+            FROM circles c
+            LEFT JOIN circle_members cm ON cm.circle_id = c.circle_id
+            WHERE c.circle_id = :circle_id
+            GROUP BY c.circle_id, c.owner_id
+        """),
+        {"circle_id": circle_id, "user_id": user_id},
+    ).fetchone()
+
+
+def _require_circle_access(db: Session, circle_id: str, user_id: str):
+    circle = _get_circle_for_access(db, circle_id, user_id)
+    if not circle:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Circle not found",
+        )
+    if circle.owner_id != user_id and not bool(circle.is_member):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have access to this circle",
+        )
+    return circle
+
+
+def _resolve_circle_id_for_create(
+    db: Session,
+    payload: CreateAnchorRequest,
+    user_id: str,
+) -> Optional[str]:
+    if payload.visibility == "CIRCLE_ONLY":
+        if not payload.circle_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="circle_id is required when visibility is CIRCLE_ONLY",
+            )
+        _require_circle_access(db, payload.circle_id, user_id)
+        return payload.circle_id
+
+    if payload.circle_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="circle_id can only be set when visibility is CIRCLE_ONLY",
+        )
+    return None
+
+
+def _resolve_circle_id_for_update(
+    db: Session,
+    payload: UpdateAnchorRequest,
+    row,
+    user_id: str,
+) -> Optional[str]:
+    target_visibility = payload.visibility if payload.visibility is not None else row.visibility
+
+    if target_visibility == "CIRCLE_ONLY":
+        target_circle_id = payload.circle_id if payload.circle_id is not None else row.circle_id
+        if not target_circle_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="circle_id is required when visibility is CIRCLE_ONLY",
+            )
+        _require_circle_access(db, target_circle_id, user_id)
+        return target_circle_id
+
+    if payload.circle_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="circle_id can only be set when visibility is CIRCLE_ONLY",
+        )
+    return None
+
+
+def _anchor_circle_access_clause(table_alias: str) -> str:
+    return f"""
+        EXISTS (
+            SELECT 1
+            FROM circles c
+            LEFT JOIN circle_members cm
+                ON cm.circle_id = c.circle_id
+               AND cm.user_id = :session_user_id
+            WHERE c.circle_id = {table_alias}.circle_id
+              AND (c.owner_id = :session_user_id OR cm.user_id IS NOT NULL)
+        )
+    """
+
+
+def _viewer_can_access_anchor_clause(table_alias: str) -> str:
+    return f"""
+        AND (
+            {table_alias}.creator_id = :session_user_id
+            OR {table_alias}.visibility = 'PUBLIC'
+            OR (
+                {table_alias}.visibility = 'CIRCLE_ONLY'
+                AND {table_alias}.circle_id IS NOT NULL
+                AND {_anchor_circle_access_clause(table_alias)}
+            )
+        )
+    """
+
+
+def _require_anchor_view_access(db: Session, row, user_id: str):
+    if row.creator_id == user_id or row.visibility == "PUBLIC":
+        return
+    if row.visibility == "CIRCLE_ONLY" and row.circle_id:
+        _require_circle_access(db, row.circle_id, user_id)
+        return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="You do not have access to this Anchor",
+    )
 
 
 def _require_location_access(db: Session, user_id: str):
@@ -294,6 +413,7 @@ def _row_to_response(row) -> AnchorResponse:
     return AnchorResponse(
         anchor_id=row.anchor_id,
         creator_id=row.creator_id,
+        circle_id=getattr(row, "circle_id", None),
         title=row.title,
         description=row.description,
         latitude=row.latitude,
@@ -347,6 +467,7 @@ def create_anchor(
             detail="visibility must be PUBLIC, PRIVATE, or CIRCLE_ONLY",
         )
     _require_location_access(db, user_id)
+    circle_id = _resolve_circle_id_for_create(db, payload, user_id)
 
     now = datetime.utcnow()
     activation_time = _to_utc_naive(payload.activation_time)
@@ -373,11 +494,11 @@ def create_anchor(
     db.execute(
         text("""
             INSERT INTO anchors
-                (anchor_id, creator_id, title, description, location, altitude,
+                (anchor_id, creator_id, circle_id, title, description, location, altitude,
                  status, visibility, unlock_radius, max_unlock,
                  activation_time, expiration_time, tags)
             VALUES
-                (:anchor_id, :creator_id, :title, :description,
+                (:anchor_id, :creator_id, :circle_id, :title, :description,
                  ST_GeomFromText(:point, 4326), :altitude,
                  'ACTIVE', :visibility, :unlock_radius, :max_unlock,
                  :activation_time, :expiration_time, :tags)
@@ -385,6 +506,7 @@ def create_anchor(
         {
             "anchor_id": anchor_id,
             "creator_id": user_id,
+            "circle_id": circle_id,
             "title": payload.title,
             "description": payload.description,
             # MySQL POINT format is POINT(longitude latitude) — note lon comes first
@@ -442,6 +564,7 @@ def update_anchor(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="visibility must be PUBLIC, PRIVATE, or CIRCLE_ONLY",
         )
+    target_circle_id = _resolve_circle_id_for_update(db, payload, row, user_id)
 
     now = datetime.utcnow()
     if payload.expiration_time is not None and payload.expiration_time < now:
@@ -481,6 +604,8 @@ def update_anchor(
         fields["description"] = payload.description
     if payload.visibility is not None:
         fields["visibility"] = payload.visibility
+    if target_circle_id != row.circle_id:
+        fields["circle_id"] = target_circle_id
     if payload.unlock_radius is not None:
         fields["unlock_radius"] = payload.unlock_radius
     if payload.max_unlock is not None:
@@ -585,6 +710,7 @@ def unlock_anchor(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Anchor not found",
         )
+    _require_anchor_view_access(db, row, user_id)
 
     # Anchor must be in ACTIVE status to be unlocked
     if row.status != "ACTIVE":
@@ -680,12 +806,17 @@ def get_all_anchors(
         tags=tags,
     )
     filter_params["session_user_id"] = user_id
-    filters = _creator_is_not_banned_clause("a") + _creator_is_not_blocked_clause("a") + filters
+    filters = (
+        _creator_is_not_banned_clause("a")
+        + _creator_is_not_blocked_clause("a")
+        + _viewer_can_access_anchor_clause("a")
+        + filters
+    )
 
     rows = db.execute(
         text(f"""
             SELECT
-                a.anchor_id, a.creator_id, a.title, a.description,
+                a.anchor_id, a.creator_id, a.circle_id, a.title, a.description,
                 ST_X(a.location) AS longitude, ST_Y(a.location) AS latitude,
                 a.altitude, a.status, a.visibility, a.unlock_radius,
                 a.max_unlock, a.current_unlock, a.activation_time,
@@ -737,6 +868,7 @@ def get_nearby_anchor_filter_options(
     """
     filters += _creator_is_not_banned_clause("a")
     filters += _creator_is_not_blocked_clause("a")
+    filters += _viewer_can_access_anchor_clause("a")
     extra_filters, extra_params = _build_anchor_filters(
         table_alias="a",
         visibility=visibility,
@@ -846,6 +978,7 @@ def get_nearby_anchors(
     """
     filters += _creator_is_not_banned_clause("a")
     filters += _creator_is_not_blocked_clause("a")
+    filters += _viewer_can_access_anchor_clause("a")
 
     extra_filters, extra_params = _build_anchor_filters(
         table_alias="a",
@@ -865,6 +998,7 @@ def get_nearby_anchors(
             SELECT
                 a.anchor_id,
                 a.creator_id,
+                a.circle_id,
                 a.title,
                 a.description,
                 ST_X(a.location) AS longitude,

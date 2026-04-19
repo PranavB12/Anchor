@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS user_sessions (
 CREATE TABLE IF NOT EXISTS anchors (
     anchor_id           CHAR(36)                                        PRIMARY KEY,
     creator_id          CHAR(36)                                        NOT NULL,
+    circle_id           CHAR(36)                                        NULL,
     title               VARCHAR(255)                                    NOT NULL,
     description         TEXT                                            NULL,
     location            POINT                                           NOT NULL SRID 4326,
@@ -53,7 +54,9 @@ CREATE TABLE IF NOT EXISTS anchors (
     tags                JSON                                            NULL,
 
     FOREIGN KEY (creator_id) REFERENCES users(user_id) ON DELETE CASCADE,
+    FOREIGN KEY (circle_id) REFERENCES circles(circle_id) ON DELETE SET NULL,
     INDEX idx_anchors_creator_id (creator_id),
+    INDEX idx_anchors_circle_id (circle_id),
     SPATIAL INDEX idx_anchors_location (location)
 );
 
