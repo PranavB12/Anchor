@@ -48,6 +48,17 @@ async def lifespan(_app: FastAPI):
                 INDEX idx_audit_action (action_type)
             )
         """))
+        db.execute(text("""
+            CREATE TABLE IF NOT EXISTS blocked_users (
+                blocker_id CHAR(36) NOT NULL,
+                blocked_user_id CHAR(36) NOT NULL,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (blocker_id, blocked_user_id),
+                FOREIGN KEY (blocker_id) REFERENCES users(user_id) ON DELETE CASCADE,
+                FOREIGN KEY (blocked_user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+                INDEX idx_blocked_users_blocked_user (blocked_user_id)
+            )
+        """))
         db.commit()
     finally:
         db.close()

@@ -34,6 +34,11 @@ import {
   saveBiometricSession,
   setBiometricPreference,
 } from "../services/biometricService";
+import {
+  getBlockedUsers,
+  unblockUser,
+  type BlockedUser,
+} from "../services/userBlockService";
 
 type Props = NativeStackScreenProps<RootStackParamList, "EditProfile">;
 
@@ -53,18 +58,25 @@ export default function EditProfileScreen({ navigation }: Props) {
   const [biometricEnabled, setBiometricEnabled] = useState(false);
   const [biometricType, setBiometricType] = useState<"faceid" | "touchid" | "none">("none");
   const [isTogglingBiometric, setIsTogglingBiometric] = useState(false);
+  const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
+  const [isLoadingBlockedUsers, setIsLoadingBlockedUsers] = useState(false);
+  const [pendingUnblockUserId, setPendingUnblockUserId] = useState<string | null>(null);
 
   // Load current profile on mount and pre-fill all fields
   useEffect(() => {
     const load = async () => {
       if (!session?.access_token) return;
       try {
-        const profile = await getProfile(session.access_token);
+        const [profile, blocked] = await Promise.all([
+          getProfile(session.access_token),
+          getBlockedUsers(session.access_token),
+        ]);
         setUsername(profile.username ?? "");
         setEmail(profile.email ?? "");
         setBio(profile.bio ?? "");
         setAvatarUrl(profile.avatar_url ?? "");
         setIsGhostMode(profile.is_ghost_mode ?? false);
+        setBlockedUsers(blocked);
       } catch {
         setError("Failed to load profile.");
       } finally {
@@ -80,6 +92,19 @@ export default function EditProfileScreen({ navigation }: Props) {
     };
     void load();
   }, [session]);
+
+  const loadBlockedUserList = async () => {
+    if (!session?.access_token) return;
+    setIsLoadingBlockedUsers(true);
+    try {
+      const blocked = await getBlockedUsers(session.access_token);
+      setBlockedUsers(blocked);
+    } catch {
+      setError("Failed to load blocked users.");
+    } finally {
+      setIsLoadingBlockedUsers(false);
+    }
+  };
 
   const biometricLabel = biometricType === "faceid" ? "Face ID" : "Touch ID";
 
@@ -175,6 +200,48 @@ export default function EditProfileScreen({ navigation }: Props) {
         },
       },
     ]);
+  };
+
+  const handleUnblock = (blockedUser: BlockedUser) => {
+    if (!session?.access_token || pendingUnblockUserId) return;
+
+    Alert.alert(
+      "Unblock user",
+      `Allow ${blockedUser.username} to appear in Discovery again?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Unblock",
+          style: "destructive",
+          onPress: () => {
+            const run = async () => {
+              setPendingUnblockUserId(blockedUser.user_id);
+              try {
+                await unblockUser(blockedUser.user_id, session.access_token);
+                setBlockedUsers((previous) =>
+                  previous.filter((user) => user.user_id !== blockedUser.user_id),
+                );
+              } catch (err) {
+                const message = err instanceof Error ? err.message : "Unable to unblock user.";
+                setError(message);
+              } finally {
+                setPendingUnblockUserId(null);
+              }
+            };
+
+            void run();
+          },
+        },
+      ],
+    );
+  };
+
+  const formatBlockedAt = (value: string) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return "Blocked recently";
+    }
+    return `Blocked ${date.toLocaleDateString()}`;
   };
 
   if (isLoading) {
@@ -281,6 +348,64 @@ export default function EditProfileScreen({ navigation }: Props) {
                     )}
                   </View>
                 </>
+              )}
+
+              <View style={styles.sectionHeader}>
+                <View>
+                  <Text style={styles.sectionTitle}>Blocked Users</Text>
+                  <Text style={styles.sectionDescription}>
+                    People here stay hidden from Discovery until you unblock them.
+                  </Text>
+                </View>
+                <Pressable
+                  disabled={isLoadingBlockedUsers}
+                  onPress={() => void loadBlockedUserList()}
+                  style={styles.sectionRefreshButton}
+                >
+                  {isLoadingBlockedUsers ? (
+                    <ActivityIndicator size="small" color={colors.accentPink} />
+                  ) : (
+                    <Text style={styles.sectionRefreshText}>Refresh</Text>
+                  )}
+                </Pressable>
+              </View>
+
+              {blockedUsers.length === 0 ? (
+                <View style={styles.emptyBlockedState}>
+                  <Text style={styles.emptyBlockedStateText}>
+                    No blocked users right now.
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.blockedUsersList}>
+                  {blockedUsers.map((blockedUser) => {
+                    const isPending = pendingUnblockUserId === blockedUser.user_id;
+                    return (
+                      <View key={blockedUser.user_id} style={styles.blockedUserRow}>
+                        <View style={styles.blockedUserMeta}>
+                          <Text style={styles.blockedUserName}>{blockedUser.username}</Text>
+                          <Text style={styles.blockedUserDate}>
+                            {formatBlockedAt(blockedUser.blocked_at)}
+                          </Text>
+                        </View>
+                        <Pressable
+                          disabled={isPending}
+                          onPress={() => handleUnblock(blockedUser)}
+                          style={({ pressed }) => [
+                            styles.unblockButton,
+                            (pressed || isPending) && styles.primaryButtonPressed,
+                          ]}
+                        >
+                          {isPending ? (
+                            <ActivityIndicator size="small" color={colors.accentPink} />
+                          ) : (
+                            <Text style={styles.unblockButtonText}>Unblock</Text>
+                          )}
+                        </Pressable>
+                      </View>
+                    );
+                  })}
+                </View>
               )}
 
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -419,5 +544,96 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.muted,
     marginRight: 12,
+  },
+  sectionHeader: {
+    marginTop: 24,
+    marginBottom: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  sectionDescription: {
+    marginTop: 4,
+    maxWidth: 220,
+    fontSize: 12,
+    color: colors.muted,
+    lineHeight: 18,
+  },
+  sectionRefreshButton: {
+    minWidth: 74,
+    minHeight: 36,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+    backgroundColor: "#fffaf6",
+  },
+  sectionRefreshText: {
+    color: colors.accentPink,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  emptyBlockedState: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 16,
+    backgroundColor: "#fffaf6",
+  },
+  emptyBlockedStateText: {
+    color: colors.muted,
+    fontSize: 13,
+  },
+  blockedUsersList: {
+    gap: 10,
+  },
+  blockedUserRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    backgroundColor: "#fffdfb",
+  },
+  blockedUserMeta: {
+    flex: 1,
+    gap: 4,
+  },
+  blockedUserName: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  blockedUserDate: {
+    color: colors.muted,
+    fontSize: 12,
+  },
+  unblockButton: {
+    minHeight: 38,
+    minWidth: 88,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.accentPink,
+    backgroundColor: "#fff6f8",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 14,
+  },
+  unblockButtonText: {
+    color: colors.accentPink,
+    fontSize: 13,
+    fontWeight: "700",
   },
 });

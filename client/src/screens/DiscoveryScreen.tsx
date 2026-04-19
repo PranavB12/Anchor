@@ -47,6 +47,7 @@ import {
   type ReportReason,
   type AnchorAttachment,
 } from "../services/anchorService";
+import { blockUser } from "../services/userBlockService";
 import ReportAnchorModal from "../components/ReportAnchorModal";
 import {
   setGhostModeBackgroundState,
@@ -876,6 +877,42 @@ export default function DiscoveryScreen({ route }: Props) {
     setSelectedAnchorId(null);
   }, []);
 
+  const handleBlockSelectedUser = useCallback(() => {
+    if (!selectedAnchor || !session?.access_token) return;
+
+    Alert.alert(
+      "Block user",
+      "You won't see this user's anchors in Discovery after blocking them.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Block",
+          style: "destructive",
+          onPress: () => {
+            const run = async () => {
+              try {
+                await blockUser(selectedAnchor.creator_id, session.access_token);
+                setAnchorAttachments([]);
+                setAnchors((previous) =>
+                  previous.filter((anchor) => anchor.creator_id !== selectedAnchor.creator_id),
+                );
+                collapseSheet();
+                void refreshDiscovery();
+                Alert.alert("User blocked", "Their anchors are now hidden from Discovery.");
+              } catch (error) {
+                const message =
+                  error instanceof Error ? error.message : "Failed to block user.";
+                Alert.alert("Couldn't block user", message);
+              }
+            };
+
+            void run();
+          },
+        },
+      ],
+    );
+  }, [collapseSheet, refreshDiscovery, selectedAnchor, session?.access_token]);
+
   const handleDropAnchor = async () => {
     if (isGhostMode) {
       Alert.alert("Ghost Mode is on", "Disable Ghost Mode to drop an anchor.");
@@ -1316,14 +1353,24 @@ export default function DiscoveryScreen({ route }: Props) {
                     <Text style={styles.editButtonText}>Edit Anchor</Text>
                   </TouchableOpacity>
                 ) : (
-                  <TouchableOpacity
-                    style={styles.reportButton}
-                    onPress={() => setIsReportModalVisible(true)}
-                    activeOpacity={0.7}
-                  >
-                    <Feather name="flag" size={14} color={colors.muted} />
-                    <Text style={styles.reportButtonText}>Report Anchor</Text>
-                  </TouchableOpacity>
+                  <>
+                    <TouchableOpacity
+                      style={styles.reportButton}
+                      onPress={() => setIsReportModalVisible(true)}
+                      activeOpacity={0.7}
+                    >
+                      <Feather name="flag" size={14} color={colors.muted} />
+                      <Text style={styles.reportButtonText}>Report Anchor</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.blockButton}
+                      onPress={handleBlockSelectedUser}
+                      activeOpacity={0.7}
+                    >
+                      <Feather name="slash" size={14} color={colors.white} />
+                      <Text style={styles.blockButtonText}>Block User</Text>
+                    </TouchableOpacity>
+                  </>
                 )}
               </View>
             </ScrollView>
@@ -2150,6 +2197,7 @@ const styles = StyleSheet.create({
   },
   detailActionRow: {
     paddingHorizontal: 16,
+    gap: 12,
   },
   markerWrapper: { width: 30, height: 30 },
   markerWrapperSelected: { width: 38, height: 38 },
@@ -2259,6 +2307,20 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.muted,
     fontWeight: "600",
+  },
+  blockButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 14,
+    backgroundColor: colors.error,
+    borderRadius: 14,
+  },
+  blockButtonText: {
+    fontSize: 15,
+    color: colors.white,
+    fontWeight: "700",
   },
   editButton: {
     flexDirection: "row",
