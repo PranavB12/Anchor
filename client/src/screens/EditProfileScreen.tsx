@@ -361,13 +361,13 @@ export default function EditProfileScreen({ navigation }: Props) {
 
               <View style={styles.circleActions}>
                 <Pressable
-                  onPress={() => navigation.navigate("CreateCircle")}
+                  onPress={() => navigation.navigate("Circles")}
                   style={({ pressed }) => [
                     styles.circleActionButton,
                     (pressed || isSubmitting || isLoggingOut) && styles.primaryButtonPressed,
                   ]}
                 >
-                  <Text style={styles.circleActionPrimaryText}>Create Circle</Text>
+                  <Text style={styles.circleActionPrimaryText}>My Circles</Text>
                 </Pressable>
                 <Pressable
                   onPress={() => navigation.navigate("CircleSearch")}

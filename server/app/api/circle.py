@@ -153,6 +153,43 @@ def create_circle(
 
 # ── Search Public Circles (US8 Task 1) ────────────────────────────────────────
 
+@router.get("/", response_model=List[CircleResponse])
+def get_circles(
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    rows = db.execute(
+        text("""
+            SELECT
+                c.circle_id,
+                c.owner_id,
+                c.name,
+                c.description,
+                c.visibility,
+                c.created_at,
+                COUNT(DISTINCT cm.user_id) AS member_count
+            FROM circles c
+            LEFT JOIN circle_members cm ON cm.circle_id = c.circle_id
+            WHERE c.owner_id = :user_id
+               OR EXISTS (
+                    SELECT 1
+                    FROM circle_members membership
+                    WHERE membership.circle_id = c.circle_id
+                      AND membership.user_id = :user_id
+               )
+            GROUP BY c.circle_id, c.owner_id, c.name, c.description, c.visibility, c.created_at
+            ORDER BY
+                CASE WHEN c.owner_id = :user_id THEN 0 ELSE 1 END,
+                c.created_at DESC
+        """),
+        {"user_id": user_id},
+    ).fetchall()
+
+    return [_row_to_circle_response(row, user_id) for row in rows]
+
+
+# ── Search Public Circles (US8 Task 1) ────────────────────────────────────────
+
 @router.get("/search", response_model=List[CircleSearchResult])
 def search_circles(
     q: str = "",

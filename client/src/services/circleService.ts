@@ -39,6 +39,13 @@ export function createCircle(body: CreateCircleBody, token: string) {
   });
 }
 
+export function getUserCircles(token: string) {
+  return apiRequest<UserCircle[]>("/circles/", {
+    method: "GET",
+    token,
+  });
+}
+
 export function inviteCircleMember(circleId: string, username: string, token: string) {
   return apiRequest<{ message: string }>(`/circles/${circleId}/members`, {
     method: "POST",

@@ -9,6 +9,7 @@ export type AnchorContentType = "TEXT" | "FILE" | "LINK";
 export type NearbyAnchor = {
   anchor_id: string;
   creator_id: string;
+  circle_id?: string | null;
   title: string;
   description: string | null;
   latitude: number;
@@ -34,6 +35,7 @@ export type CreateAnchorBody = {
   longitude: number;
   altitude: number | null;
   visibility: "PUBLIC" | "PRIVATE" | "CIRCLE_ONLY";
+  circle_id?: string | null;
   unlock_radius: number;
   max_unlock?: number | null;
   activation_time?: string | null;
@@ -49,6 +51,8 @@ export type AnchorDraft = {
   longitude: number;
   altitude: number | null;
   visibility: AnchorVisibility;
+  circle_id?: string | null;
+  circle_name?: string | null;
   unlock_radius: number;
   max_unlock: number | null;
   activation_time: string;

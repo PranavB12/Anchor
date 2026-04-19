@@ -90,7 +90,7 @@ export default function CreateCircleScreen({ navigation }: Props) {
       Alert.alert("Circle Created", "Your new circle is ready.", [
         {
           text: "OK",
-          onPress: () => navigation.goBack(),
+          onPress: () => navigation.replace("Circles"),
         },
       ]);
     } catch (err) {

@@ -22,6 +22,7 @@ import CircleMembersScreen from "../screens/CircleMembersScreen";
 import type { AdminUserSummary } from "../services/adminService";
 import CircleSearchScreen from "../screens/CircleSearchScreen";
 import CreateCircleScreen from "../screens/CreateCircleScreen";
+import CirclesScreen from "../screens/CirclesScreen";
 
 
 export type RootStackParamList = {
@@ -41,6 +42,7 @@ export type RootStackParamList = {
   AdminReports: undefined;
   CircleMembers: { circleId: string; circleName: string; isOwner: boolean };
   CircleSearch: undefined;
+  Circles: undefined;
   CreateCircle: undefined;
 };
 
@@ -100,6 +102,7 @@ export default function AppNavigator() {
             <Stack.Screen name="AdminReports" component={AdminReportsScreen} options={{ title: "Admin Reports" }} />
             <Stack.Screen name="CircleMembers" component={CircleMembersScreen} options={{ title: "Circle Members" }} />
             <Stack.Screen name="CircleSearch" component={CircleSearchScreen} options={{ title: "Discover Circles" }} />
+            <Stack.Screen name="Circles" component={CirclesScreen} options={{ title: "My Circles" }} />
             <Stack.Screen name="CreateCircle" component={CreateCircleScreen} options={{ title: "Create Circle" }} />
             <Stack.Screen
               name="EditAnchor"
