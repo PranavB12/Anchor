@@ -181,6 +181,17 @@ CREATE TABLE IF NOT EXISTS circle_members (
     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS anchor_votes (
+    anchor_id   CHAR(36)                    NOT NULL,
+    user_id     CHAR(36)                    NOT NULL,
+    vote        ENUM('UPVOTE', 'DOWNVOTE')  NOT NULL,
+    voted_at    DATETIME                    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (anchor_id, user_id),
+    FOREIGN KEY (anchor_id) REFERENCES anchors(anchor_id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+);
+
 -- ---------------------------------------------------------------------------
 -- Seed data for local development
 -- ---------------------------------------------------------------------------

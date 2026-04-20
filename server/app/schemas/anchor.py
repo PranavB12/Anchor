@@ -71,6 +71,8 @@ class AnchorResponse(BaseModel):
     # Distinct content types attached to this anchor (TEXT, FILE, LINK)
     content_type: Optional[List[str]] = None
     tags: Optional[List[str]] = None
+    net_votes: int = 0
+    user_vote: Optional[str] = None
 
 
 class AnchorFilterOption(BaseModel):
