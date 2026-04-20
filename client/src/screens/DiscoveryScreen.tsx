@@ -38,6 +38,7 @@ import {
   unlockAnchor,
   getAnchorAttachments,
   uploadAnchorAttachment,
+  voteAnchor,
   type AnchorContentType,
   type AnchorFilterOption,
   type AnchorStatus,
@@ -46,6 +47,7 @@ import {
   type NearbyAnchor,
   type ReportReason,
   type AnchorAttachment,
+  type VoteResponse,
 } from "../services/anchorService";
 import { blockUser } from "../services/userBlockService";
 import {
@@ -294,6 +296,7 @@ export default function DiscoveryScreen({ route }: Props) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
 
+  const [anchorVotes, setAnchorVotes] = useState<Record<string, { net: number; userVote: "UPVOTE" | "DOWNVOTE" | null }>>({});
 
 
   const [anchorLocation, setAnchorLocation] = useState<Coordinate | null>(null);
@@ -674,6 +677,27 @@ export default function DiscoveryScreen({ route }: Props) {
       }
     },
     [savedAnchorIds, savingAnchorId, session?.access_token, showToast],
+  );
+
+const handleVote = useCallback(
+    async (anchorId: string, vote: "UPVOTE" | "DOWNVOTE") => {
+      const token = session?.access_token;
+      if (!token) return;
+      try {
+        const result = await voteAnchor(anchorId, vote, token);
+        setAnchorVotes((prev) => ({
+          ...prev,
+          [anchorId]: {
+            net: result.net_votes,
+            userVote: result.user_vote,
+          },
+        }));
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to vote.";
+        Alert.alert("Error", message);
+      }
+    },
+    [session?.access_token],
   );
 
   useEffect(() => {
@@ -1436,6 +1460,40 @@ export default function DiscoveryScreen({ route }: Props) {
               )}
 
               <View style={styles.detailActionRow}>
+                {selectedAnchor.creator_id !== session?.user_id && selectedAnchor.isUnlocked && (
+                  <View style={styles.voteRow}>
+                    <TouchableOpacity
+                      style={[
+                        styles.voteButton,
+                        (anchorVotes[selectedAnchor.anchor_id]?.userVote ?? selectedAnchor.user_vote) === "UPVOTE" && styles.voteButtonActive,
+                      ]}
+                      onPress={() => handleVote(selectedAnchor.anchor_id, "UPVOTE")}
+                    >
+                      <Feather
+                        name="thumbs-up"
+                        size={16}
+                        color={(anchorVotes[selectedAnchor.anchor_id]?.userVote ?? selectedAnchor.user_vote) === "UPVOTE" ? colors.white : colors.muted}
+                      />
+                    </TouchableOpacity>
+                    <Text style={styles.voteCount}>
+                      {anchorVotes[selectedAnchor.anchor_id]?.net ?? selectedAnchor.net_votes ?? 0}
+                    </Text>
+                    <TouchableOpacity
+                      style={[
+                        styles.voteButton,
+                        (anchorVotes[selectedAnchor.anchor_id]?.userVote ?? selectedAnchor.user_vote) === "DOWNVOTE" && styles.voteButtonDownActive,
+                      ]}
+                      onPress={() => handleVote(selectedAnchor.anchor_id, "DOWNVOTE")}
+                    >
+                      <Feather
+                        name="thumbs-down"
+                        size={16}
+                        color={(anchorVotes[selectedAnchor.anchor_id]?.userVote ?? selectedAnchor.user_vote) === "DOWNVOTE" ? colors.white : colors.muted}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                )}
+
                 {(() => {
                   const isSaved = savedAnchorIds.has(selectedAnchor.anchor_id);
                   const isSavingThis = savingAnchorId === selectedAnchor.anchor_id;
@@ -2524,5 +2582,38 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: 14,
     fontWeight: "700",
-  }
+  }, 
+
+  voteRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 16,
+    paddingVertical: 12,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+  },
+  voteButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#f3f4f6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  voteButtonActive: {
+    backgroundColor: colors.success,
+  },
+  voteButtonDownActive: {
+    backgroundColor: colors.error,
+  },
+  voteCount: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: colors.text,
+    minWidth: 30,
+    textAlign: "center",
+  },
 });
