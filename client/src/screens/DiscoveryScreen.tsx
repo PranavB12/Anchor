@@ -1045,6 +1045,12 @@ export default function DiscoveryScreen({ route }: Props) {
                 ) : null}
                 <TouchableOpacity
                   style={styles.profileButton}
+                  onPress={() => navigation.navigate("Library")}
+                >
+                  <Feather name="bookmark" size={18} color={colors.accentPink} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.profileButton}
                   onPress={() => navigation.navigate("AR")}
                 >
                   <Feather name="layers" size={18} color={colors.accentPink} />
