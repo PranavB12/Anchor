@@ -57,7 +57,7 @@ def _get_anchor_by_id(db: Session, anchor_id: str):
                    ST_X(a.location) AS longitude, ST_Y(a.location) AS latitude,
                    a.altitude, a.status, a.visibility, a.unlock_radius,
                    a.max_unlock, a.current_unlock, a.activation_time,
-                   a.expiration_time, a.tags,
+                   a.expiration_time, a.tags, a.is_savable,
                    (
                        SELECT GROUP_CONCAT(DISTINCT c.content_type ORDER BY c.content_type SEPARATOR ',')
                        FROM Content c
@@ -432,6 +432,7 @@ def _row_to_response(row, net_votes: int = 0, user_vote: Optional[str] = None) -
         is_unlocked=bool(getattr(row, "is_unlocked", False)),
         content_type=content_type,
         tags=tags,
+<<<<<<< Updated upstream
         net_votes=int(getattr(row, "net_votes", 0) or 0),
         user_vote=getattr(row, "user_vote", None),
     )
@@ -461,6 +462,9 @@ def _row_to_response(row, net_votes: int = 0, user_vote: Optional[str] = None) -
         is_unlocked=bool(getattr(row, "is_unlocked", False)),
         content_type=content_type,
         tags=tags,
+=======
+        is_savable=bool(getattr(row, "is_savable", True)),
+>>>>>>> Stashed changes
     )
 
 
@@ -527,12 +531,12 @@ def create_anchor(
             INSERT INTO anchors
                 (anchor_id, creator_id, circle_id, title, description, location, altitude,
                  status, visibility, unlock_radius, max_unlock,
-                 activation_time, expiration_time, tags)
+                 activation_time, expiration_time, tags, is_savable)
             VALUES
                 (:anchor_id, :creator_id, :circle_id, :title, :description,
                  ST_GeomFromText(:point, 4326), :altitude,
                  'ACTIVE', :visibility, :unlock_radius, :max_unlock,
-                 :activation_time, :expiration_time, :tags)
+                 :activation_time, :expiration_time, :tags, :is_savable)
         """),
         {
             "anchor_id": anchor_id,
@@ -549,6 +553,7 @@ def create_anchor(
             "activation_time": activation_time,
             "expiration_time": expiration_time,
             "tags": tags_json,
+            "is_savable": payload.is_savable,
         },
     )
     db.commit()
@@ -851,7 +856,7 @@ def get_all_anchors(
                 ST_X(a.location) AS longitude, ST_Y(a.location) AS latitude,
                 a.altitude, a.status, a.visibility, a.unlock_radius,
                 a.max_unlock, a.current_unlock, a.activation_time,
-                a.expiration_time, a.tags,
+                a.expiration_time, a.tags, a.is_savable,
                 (
                     SELECT GROUP_CONCAT(DISTINCT c.content_type ORDER BY c.content_type SEPARATOR ',')
                     FROM Content c
@@ -1053,6 +1058,7 @@ def get_nearby_anchors(
                 a.activation_time,
                 a.expiration_time,
                 a.tags,
+                a.is_savable,
                 (
                     SELECT GROUP_CONCAT(DISTINCT c.content_type ORDER BY c.content_type SEPARATOR ',')
                     FROM Content c

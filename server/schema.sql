@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS anchors (
     activation_time     DATETIME                                        NULL,
     expiration_time     DATETIME                                        NULL,
     tags                JSON                                            NULL,
+    is_savable          BOOLEAN                                         NOT NULL DEFAULT TRUE,
 
     FOREIGN KEY (creator_id) REFERENCES users(user_id) ON DELETE CASCADE,
     FOREIGN KEY (circle_id) REFERENCES circles(circle_id) ON DELETE SET NULL,

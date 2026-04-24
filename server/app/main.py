@@ -33,6 +33,17 @@ def _bootstrap_core_tables():
             db.execute(text("ALTER TABLE users ADD COLUMN is_banned BOOLEAN NOT NULL DEFAULT FALSE"))
             db.commit()
 
+        check_savable = db.execute(text("""
+            SELECT COUNT(*)
+            FROM information_schema.columns
+            WHERE table_name = 'anchors'
+              AND column_name = 'is_savable'
+              AND table_schema = DATABASE()
+        """)).fetchone()
+        if check_savable and check_savable[0] == 0:
+            db.execute(text("ALTER TABLE anchors ADD COLUMN is_savable BOOLEAN NOT NULL DEFAULT TRUE"))
+            db.commit()
+
         db.execute(text("""
             CREATE TABLE IF NOT EXISTS audit_logs (
                 log_id CHAR(36) PRIMARY KEY,

@@ -30,6 +30,8 @@ class CreateAnchorRequest(BaseModel):
     expiration_time: Optional[datetime] = None
     always_active: bool = False
     tags: Optional[List[str]] = None
+    # When False, other users cannot save this anchor to their personal library.
+    is_savable: bool = True
 
 
 class UpdateAnchorRequest(BaseModel):
@@ -47,6 +49,7 @@ class UpdateAnchorRequest(BaseModel):
     expiration_time: Optional[datetime] = None
     always_active: Optional[bool] = None
     tags: Optional[List[str]] = None
+    is_savable: Optional[bool] = None
 
 
 class AnchorResponse(BaseModel):
@@ -74,8 +77,12 @@ class AnchorResponse(BaseModel):
     # Distinct content types attached to this anchor (TEXT, FILE, LINK)
     content_type: Optional[List[str]] = None
     tags: Optional[List[str]] = None
+<<<<<<< Updated upstream
     net_votes: int = 0
     user_vote: Optional[str] = None
+=======
+    is_savable: bool = True
+>>>>>>> Stashed changes
 
 
 class AnchorFilterOption(BaseModel):
