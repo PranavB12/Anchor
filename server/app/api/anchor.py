@@ -628,6 +628,8 @@ def update_anchor(
     if payload.tags is not None:
         normalized_tags = _normalize_stored_tags(payload.tags)
         fields["tags"] = json.dumps(normalized_tags) if normalized_tags else None
+    if payload.is_savable is not None:
+        fields["is_savable"] = payload.is_savable
 
     # Handle partial location update — if only lat or only lon is provided,
     # fall back to the existing value for the other coordinate

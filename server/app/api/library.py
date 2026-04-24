@@ -143,7 +143,7 @@ def save_anchor(
     """Save an anchor to the current user's personal library."""
     anchor = db.execute(
         text("""
-            SELECT anchor_id, status, expiration_time
+            SELECT anchor_id, status, expiration_time, is_savable
             FROM anchors
             WHERE anchor_id = :anchor_id
         """),
@@ -153,6 +153,14 @@ def save_anchor(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Anchor not found",
+        )
+
+    # US2 #3 — Creator can mark an anchor unsavable; reject save attempts on those
+    # anchors so sensitive content cannot be bookmarked indefinitely.
+    if not bool(anchor.is_savable):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This anchor cannot be saved to a library",
         )
 
     # Composite PK on (user_id, anchor_id) naturally prevents duplicates —
