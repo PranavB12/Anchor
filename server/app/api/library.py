@@ -11,6 +11,7 @@ Endpoints:
 """
 
 import json
+from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -20,7 +21,11 @@ from sqlalchemy.orm import Session
 from app.core.audit import log_action
 from app.core.database import get_db
 from app.core.dependencies import get_current_user_id
-from app.schemas.library import SaveAnchorRequest, SavedAnchorResponse
+from app.schemas.library import (
+    SaveAnchorRequest,
+    SavedAnchorExpirationStatus,
+    SavedAnchorResponse,
+)
 
 router = APIRouter(tags=["Library"])
 
@@ -48,6 +53,64 @@ def _parse_content_types(raw) -> Optional[List[str]]:
     return None
 
 
+def _compute_expiration_status(
+    anchor_status: Optional[str],
+    expiration_time,
+    now: Optional[datetime] = None,
+) -> str:
+    current_time = now or datetime.utcnow()
+    if anchor_status == "EXPIRED":
+        return SavedAnchorExpirationStatus.EXPIRED
+    if expiration_time is not None and expiration_time <= current_time:
+        return SavedAnchorExpirationStatus.EXPIRED
+    return SavedAnchorExpirationStatus.LIVE
+
+
+def _expire_past_due_anchors(
+    db: Session,
+    *,
+    now: Optional[datetime] = None,
+    anchor_id: Optional[str] = None,
+):
+    current_time = now or datetime.utcnow()
+    query = """
+        UPDATE anchors
+        SET status = 'EXPIRED'
+        WHERE status = 'ACTIVE'
+          AND expiration_time IS NOT NULL
+          AND expiration_time <= :now
+    """
+    params = {"now": current_time}
+    if anchor_id:
+        query += " AND anchor_id = :anchor_id"
+        params["anchor_id"] = anchor_id
+    db.execute(text(query), params)
+
+
+def _refresh_saved_anchor_expiration_statuses(
+    db: Session,
+    user_id: str,
+    *,
+    now: Optional[datetime] = None,
+):
+    current_time = now or datetime.utcnow()
+    _expire_past_due_anchors(db, now=current_time)
+    db.execute(
+        text("""
+            UPDATE saved_anchors sa
+            JOIN anchors a ON a.anchor_id = sa.anchor_id
+            SET sa.expiration_status = CASE
+                WHEN a.status = 'EXPIRED' THEN 'EXPIRED'
+                WHEN a.expiration_time IS NOT NULL AND a.expiration_time <= :now THEN 'EXPIRED'
+                ELSE 'LIVE'
+            END
+            WHERE sa.user_id = :user_id
+        """),
+        {"user_id": user_id, "now": current_time},
+    )
+    db.commit()
+
+
 # ── POST /user/library/save ───────────────────────────────────────────────────
 
 @router.post(
@@ -63,7 +126,11 @@ def save_anchor(
 ):
     """Save an anchor to the current user's personal library."""
     anchor = db.execute(
-        text("SELECT anchor_id FROM anchors WHERE anchor_id = :anchor_id"),
+        text("""
+            SELECT anchor_id, status, expiration_time
+            FROM anchors
+            WHERE anchor_id = :anchor_id
+        """),
         {"anchor_id": payload.anchor_id},
     ).fetchone()
     if not anchor:
@@ -87,12 +154,21 @@ def save_anchor(
             detail="Anchor is already in your library",
         )
 
+    _expire_past_due_anchors(db, anchor_id=payload.anchor_id)
+    expiration_status = _compute_expiration_status(
+        anchor.status,
+        anchor.expiration_time,
+    )
     db.execute(
         text("""
-            INSERT INTO saved_anchors (user_id, anchor_id)
-            VALUES (:user_id, :anchor_id)
+            INSERT INTO saved_anchors (user_id, anchor_id, expiration_status)
+            VALUES (:user_id, :anchor_id, :expiration_status)
         """),
-        {"user_id": user_id, "anchor_id": payload.anchor_id},
+        {
+            "user_id": user_id,
+            "anchor_id": payload.anchor_id,
+            "expiration_status": expiration_status,
+        },
     )
     db.commit()
 
@@ -112,6 +188,7 @@ def list_library(
     db: Session = Depends(get_db),
 ):
     """Return every anchor the user has saved, newest save first."""
+    _refresh_saved_anchor_expiration_statuses(db, user_id)
     rows = db.execute(
         text("""
             SELECT
@@ -125,6 +202,7 @@ def list_library(
                     FROM Content c
                     WHERE c.anchor_id = a.anchor_id
                 ) AS content_type,
+                sa.expiration_status,
                 sa.saved_at
             FROM saved_anchors sa
             JOIN anchors a ON a.anchor_id = sa.anchor_id
@@ -192,6 +270,7 @@ def _fetch_saved_row(db: Session, user_id: str, anchor_id: str):
                     FROM Content c
                     WHERE c.anchor_id = a.anchor_id
                 ) AS content_type,
+                sa.expiration_status,
                 sa.saved_at
             FROM saved_anchors sa
             JOIN anchors a ON a.anchor_id = sa.anchor_id
@@ -218,6 +297,7 @@ def _row_to_saved_response(row) -> SavedAnchorResponse:
         activation_time=row.activation_time,
         expiration_time=row.expiration_time,
         always_active=row.expiration_time is None,
+        expiration_status=row.expiration_status,
         content_type=_parse_content_types(getattr(row, "content_type", None)),
         tags=_parse_tags(row.tags),
         saved_at=row.saved_at,

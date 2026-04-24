@@ -92,6 +92,31 @@ def _bootstrap_core_tables():
                 ADD CONSTRAINT fk_anchors_circle_id
                 FOREIGN KEY (circle_id) REFERENCES circles(circle_id) ON DELETE SET NULL
             """))
+        saved_anchors_table = db.execute(
+            text("SHOW TABLES LIKE 'saved_anchors'")
+        ).fetchone()
+        if saved_anchors_table is not None:
+            check_saved_expiration_status_col = db.execute(
+                text("SHOW COLUMNS FROM saved_anchors LIKE 'expiration_status'")
+            ).fetchone()
+            if check_saved_expiration_status_col is None:
+                db.execute(text("""
+                    ALTER TABLE saved_anchors
+                    ADD COLUMN expiration_status ENUM('LIVE', 'EXPIRED') NOT NULL DEFAULT 'LIVE'
+                """))
+                db.execute(text("""
+                    ALTER TABLE saved_anchors
+                    ADD INDEX idx_saved_anchors_user_expiration_status (user_id, expiration_status)
+                """))
+                db.execute(text("""
+                    UPDATE saved_anchors sa
+                    JOIN anchors a ON a.anchor_id = sa.anchor_id
+                    SET sa.expiration_status = CASE
+                        WHEN a.status = 'EXPIRED' THEN 'EXPIRED'
+                        WHEN a.expiration_time IS NOT NULL AND a.expiration_time <= UTC_TIMESTAMP() THEN 'EXPIRED'
+                        ELSE 'LIVE'
+                    END
+                """))
         db.commit()
     finally:
         db.close()
