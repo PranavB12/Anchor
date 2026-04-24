@@ -125,6 +125,17 @@ CREATE TABLE IF NOT EXISTS unlocked_anchors (
     FOREIGN KEY (anchor_id) REFERENCES anchors(anchor_id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS saved_anchors (
+    user_id         CHAR(36)    NOT NULL,
+    anchor_id       CHAR(36)    NOT NULL,
+    saved_at        DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (user_id, anchor_id),
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+    FOREIGN KEY (anchor_id) REFERENCES anchors(anchor_id) ON DELETE CASCADE,
+    INDEX idx_saved_anchors_user_id (user_id)
+);
+
 CREATE TABLE IF NOT EXISTS audit_logs (
     log_id          CHAR(36)        PRIMARY KEY,
     user_id         CHAR(36)        NOT NULL,
@@ -170,6 +181,17 @@ CREATE TABLE IF NOT EXISTS circle_members (
 
     PRIMARY KEY (circle_id, user_id),
     FOREIGN KEY (circle_id) REFERENCES circles(circle_id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS anchor_votes (
+    anchor_id   CHAR(36)                    NOT NULL,
+    user_id     CHAR(36)                    NOT NULL,
+    vote        ENUM('UPVOTE', 'DOWNVOTE')  NOT NULL,
+    voted_at    DATETIME                    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (anchor_id, user_id),
+    FOREIGN KEY (anchor_id) REFERENCES anchors(anchor_id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
 

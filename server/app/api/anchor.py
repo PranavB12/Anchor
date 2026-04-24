@@ -22,6 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status, Request
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from app.core.audit import log_action
+from pydantic import BaseModel as PydanticBaseModel
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user_id
@@ -39,6 +40,8 @@ VALID_VISIBILITY = {"PUBLIC", "PRIVATE", "CIRCLE_ONLY"}
 VALID_ANCHOR_STATUS = {"ACTIVE", "EXPIRED", "LOCKED", "FLAGGED"}
 VALID_CONTENT_TYPES = {"TEXT", "FILE", "LINK"}
 
+class VoteRequest(PydanticBaseModel):
+    vote: str
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -403,7 +406,35 @@ def _serialize_filter_counts(
     ]
 
 
-def _row_to_response(row) -> AnchorResponse:
+def _row_to_response(row, net_votes: int = 0, user_vote: Optional[str] = None) -> AnchorResponse:
+    """
+    Convert a raw database row into an AnchorResponse schema object.
+    Tags are stored as a JSON string in the DB, so we parse them back into a list.
+    """
+    tags = _parse_tags(row.tags)
+    content_type = _parse_content_types(getattr(row, "content_type", None))
+    return AnchorResponse(
+        anchor_id=row.anchor_id,
+        creator_id=row.creator_id,
+        title=row.title,
+        description=row.description,
+        latitude=row.latitude,
+        longitude=row.longitude,
+        altitude=row.altitude,
+        status=row.status,
+        visibility=row.visibility,
+        unlock_radius=row.unlock_radius,
+        max_unlock=row.max_unlock,
+        current_unlock=row.current_unlock,
+        activation_time=row.activation_time,
+        expiration_time=row.expiration_time,
+        always_active=row.expiration_time is None,
+        is_unlocked=bool(getattr(row, "is_unlocked", False)),
+        content_type=content_type,
+        tags=tags,
+        net_votes=int(getattr(row, "net_votes", 0) or 0),
+        user_vote=getattr(row, "user_vote", None),
+    )
     """
     Convert a raw database row into an AnchorResponse schema object.
     Tags are stored as a JSON string in the DB, so we parse them back into a list.
@@ -825,7 +856,17 @@ def get_all_anchors(
                     SELECT GROUP_CONCAT(DISTINCT c.content_type ORDER BY c.content_type SEPARATOR ',')
                     FROM Content c
                     WHERE c.anchor_id = a.anchor_id
-                ) AS content_type
+                ) AS content_type, 
+             COALESCE((
+    SELECT SUM(CASE WHEN vote = 'UPVOTE' THEN 1 ELSE -1 END)
+    FROM anchor_votes av
+    WHERE av.anchor_id = a.anchor_id
+), 0) AS net_votes,
+(
+    SELECT vote FROM anchor_votes av
+    WHERE av.anchor_id = a.anchor_id AND av.user_id = :session_user_id
+    LIMIT 1
+) AS user_vote,
             FROM anchors a
             WHERE 1 = 1
             {filters}
@@ -1017,6 +1058,16 @@ def get_nearby_anchors(
                     FROM Content c
                     WHERE c.anchor_id = a.anchor_id
                 ) AS content_type,
+             COALESCE((
+    SELECT SUM(CASE WHEN vote = 'UPVOTE' THEN 1 ELSE -1 END)
+    FROM anchor_votes av
+    WHERE av.anchor_id = a.anchor_id
+), 0) AS net_votes,
+(
+    SELECT vote FROM anchor_votes av
+    WHERE av.anchor_id = a.anchor_id AND av.user_id = :session_user_id
+    LIMIT 1
+) AS user_vote,
                 -- Only unlocked if creator OR currently within radius
                 (a.creator_id = :session_user_id OR ST_Distance_Sphere(a.location, ST_GeomFromText(:user_point, 4326)) <= a.unlock_radius) AS is_unlocked,
                 -- Track if previously unlocked to handle count increments correctly
@@ -1093,3 +1144,93 @@ def get_nearby_anchors(
         results.append(_row_to_response(row))
 
     return results
+
+# ── Vote on Anchor (US9) ──────────────────────────────────────────────────────
+
+@router.post("/{anchor_id}/vote", status_code=status.HTTP_200_OK)
+def vote_anchor(
+    anchor_id: str,
+    payload: VoteRequest,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    """
+    US9 Task 1 — Upvote or downvote an anchor.
+    One vote per user per anchor — voting again with the same value removes the vote.
+    Voting with the opposite value switches the vote.
+    Anchor creator cannot vote on their own anchor.
+    """
+    if payload.vote not in ("UPVOTE", "DOWNVOTE"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="vote must be UPVOTE or DOWNVOTE",
+        )
+
+    row = _get_anchor_by_id(db, anchor_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Anchor not found")
+
+    if row.creator_id == user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You cannot vote on your own anchor",
+        )
+
+    existing = db.execute(
+        text("""
+            SELECT vote FROM anchor_votes
+            WHERE anchor_id = :anchor_id AND user_id = :user_id
+        """),
+        {"anchor_id": anchor_id, "user_id": user_id},
+    ).fetchone()
+
+    if existing:
+        if existing.vote == payload.vote:
+            # Same vote — remove it (toggle off)
+            db.execute(
+                text("""
+                    DELETE FROM anchor_votes
+                    WHERE anchor_id = :anchor_id AND user_id = :user_id
+                """),
+                {"anchor_id": anchor_id, "user_id": user_id},
+            )
+            user_vote = None
+        else:
+            # Different vote — switch it
+            db.execute(
+                text("""
+                    UPDATE anchor_votes SET vote = :vote, voted_at = NOW()
+                    WHERE anchor_id = :anchor_id AND user_id = :user_id
+                """),
+                {"vote": payload.vote, "anchor_id": anchor_id, "user_id": user_id},
+            )
+            user_vote = payload.vote
+    else:
+        # New vote
+        db.execute(
+            text("""
+                INSERT INTO anchor_votes (anchor_id, user_id, vote)
+                VALUES (:anchor_id, :user_id, :vote)
+            """),
+            {"anchor_id": anchor_id, "user_id": user_id, "vote": payload.vote},
+        )
+        user_vote = payload.vote
+
+    db.commit()
+
+    net_votes = db.execute(
+        text("""
+            SELECT
+                SUM(CASE WHEN vote = 'UPVOTE' THEN 1 ELSE -1 END) AS net
+            FROM anchor_votes
+            WHERE anchor_id = :anchor_id
+        """),
+        {"anchor_id": anchor_id},
+    ).fetchone()
+
+    return {
+        "message": "Vote recorded",
+        "anchor_id": anchor_id,
+        "net_votes": int(net_votes.net) if net_votes.net is not None else 0,
+        "user_vote": user_vote,
+    }

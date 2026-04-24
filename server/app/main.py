@@ -16,6 +16,7 @@ from app.api.admin import router as admin_router
 from app.api.content import router as content_router
 from app.core.database import SessionLocal
 from app.api.circle import router as circle_router
+from app.api.library import router as library_router
 
 
 def _bootstrap_core_tables():
@@ -128,6 +129,7 @@ app.include_router(report_router)
 app.include_router(admin_router)
 app.include_router(content_router)
 app.include_router(circle_router)
+app.include_router(library_router)
 
 
 @app.get("/")

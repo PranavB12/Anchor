@@ -38,6 +38,7 @@ import {
   unlockAnchor,
   getAnchorAttachments,
   uploadAnchorAttachment,
+  voteAnchor,
   type AnchorContentType,
   type AnchorFilterOption,
   type AnchorStatus,
@@ -46,8 +47,14 @@ import {
   type NearbyAnchor,
   type ReportReason,
   type AnchorAttachment,
+  type VoteResponse,
 } from "../services/anchorService";
 import { blockUser } from "../services/userBlockService";
+import {
+  getLibrary,
+  removeFromLibrary,
+  saveAnchor,
+} from "../services/libraryService";
 import ReportAnchorModal from "../components/ReportAnchorModal";
 import {
   setGhostModeBackgroundState,
@@ -289,6 +296,7 @@ export default function DiscoveryScreen({ route }: Props) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
 
+  const [anchorVotes, setAnchorVotes] = useState<Record<string, { net: number; userVote: "UPVOTE" | "DOWNVOTE" | null }>>({});
 
 
   const [anchorLocation, setAnchorLocation] = useState<Coordinate | null>(null);
@@ -299,6 +307,11 @@ export default function DiscoveryScreen({ route }: Props) {
   const [isGhostMode, setIsGhostMode] = useState(false);
   const [ghostModeLoaded, setGhostModeLoaded] = useState(false);
   const [canViewAdminDashboard, setCanViewAdminDashboard] = useState(false);
+
+  const [savedAnchorIds, setSavedAnchorIds] = useState<Set<string>>(new Set());
+  const [savingAnchorId, setSavingAnchorId] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastOpacity = useRef(new Animated.Value(0)).current;
 
 
   const resetLocationDrivenState = useCallback(() => {
@@ -584,6 +597,108 @@ export default function DiscoveryScreen({ route }: Props) {
 
     void checkAdminAccess();
   }, [session?.access_token]);
+
+  const loadSavedAnchors = useCallback(async () => {
+    const token = session?.access_token;
+    if (!token) {
+      setSavedAnchorIds(new Set());
+      return;
+    }
+    try {
+      const saved = await getLibrary(token);
+      setSavedAnchorIds(new Set(saved.map((s) => s.anchor_id)));
+    } catch {
+      // Silently ignore — the Save button still works, just without pre-highlight.
+    }
+  }, [session?.access_token]);
+
+  useEffect(() => {
+    void loadSavedAnchors();
+  }, [loadSavedAnchors]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadSavedAnchors();
+    }, [loadSavedAnchors]),
+  );
+
+  const showToast = useCallback(
+    (message: string) => {
+      setToastMessage(message);
+      toastOpacity.setValue(0);
+      Animated.sequence([
+        Animated.timing(toastOpacity, {
+          toValue: 1,
+          duration: 180,
+          useNativeDriver: true,
+        }),
+        Animated.delay(1600),
+        Animated.timing(toastOpacity, {
+          toValue: 0,
+          duration: 240,
+          useNativeDriver: true,
+        }),
+      ]).start(() => setToastMessage(null));
+    },
+    [toastOpacity],
+  );
+
+  const handleToggleSave = useCallback(
+    async (anchorId: string) => {
+      const token = session?.access_token;
+      if (!token) return;
+      if (savingAnchorId) return;
+
+      setSavingAnchorId(anchorId);
+      const wasSaved = savedAnchorIds.has(anchorId);
+      try {
+        if (wasSaved) {
+          await removeFromLibrary(anchorId, token);
+          setSavedAnchorIds((prev) => {
+            const next = new Set(prev);
+            next.delete(anchorId);
+            return next;
+          });
+          showToast("Removed from library");
+        } else {
+          await saveAnchor(anchorId, token);
+          setSavedAnchorIds((prev) => {
+            const next = new Set(prev);
+            next.add(anchorId);
+            return next;
+          });
+          showToast("Saved!");
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Save failed.";
+        Alert.alert("Couldn't update library", message);
+      } finally {
+        setSavingAnchorId(null);
+      }
+    },
+    [savedAnchorIds, savingAnchorId, session?.access_token, showToast],
+  );
+
+const handleVote = useCallback(
+    async (anchorId: string, vote: "UPVOTE" | "DOWNVOTE") => {
+      const token = session?.access_token;
+      if (!token) return;
+      try {
+        const result = await voteAnchor(anchorId, vote, token);
+        setAnchorVotes((prev) => ({
+          ...prev,
+          [anchorId]: {
+            net: result.net_votes,
+            userVote: result.user_vote,
+          },
+        }));
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to vote.";
+        Alert.alert("Error", message);
+      }
+    },
+    [session?.access_token],
+  );
 
   useEffect(() => {
     if (!ghostModeLoaded) return;
@@ -1045,6 +1160,12 @@ export default function DiscoveryScreen({ route }: Props) {
                 ) : null}
                 <TouchableOpacity
                   style={styles.profileButton}
+                  onPress={() => navigation.navigate("Library")}
+                >
+                  <Feather name="bookmark" size={18} color={colors.accentPink} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.profileButton}
                   onPress={() => navigation.navigate("AR")}
                 >
                   <Feather name="layers" size={18} color={colors.accentPink} />
@@ -1339,6 +1460,70 @@ export default function DiscoveryScreen({ route }: Props) {
               )}
 
               <View style={styles.detailActionRow}>
+                {selectedAnchor.creator_id !== session?.user_id && selectedAnchor.isUnlocked && (
+                  <View style={styles.voteRow}>
+                    <TouchableOpacity
+                      style={[
+                        styles.voteButton,
+                        (anchorVotes[selectedAnchor.anchor_id]?.userVote ?? selectedAnchor.user_vote) === "UPVOTE" && styles.voteButtonActive,
+                      ]}
+                      onPress={() => handleVote(selectedAnchor.anchor_id, "UPVOTE")}
+                    >
+                      <Feather
+                        name="thumbs-up"
+                        size={16}
+                        color={(anchorVotes[selectedAnchor.anchor_id]?.userVote ?? selectedAnchor.user_vote) === "UPVOTE" ? colors.white : colors.muted}
+                      />
+                    </TouchableOpacity>
+                    <Text style={styles.voteCount}>
+                      {anchorVotes[selectedAnchor.anchor_id]?.net ?? selectedAnchor.net_votes ?? 0}
+                    </Text>
+                    <TouchableOpacity
+                      style={[
+                        styles.voteButton,
+                        (anchorVotes[selectedAnchor.anchor_id]?.userVote ?? selectedAnchor.user_vote) === "DOWNVOTE" && styles.voteButtonDownActive,
+                      ]}
+                      onPress={() => handleVote(selectedAnchor.anchor_id, "DOWNVOTE")}
+                    >
+                      <Feather
+                        name="thumbs-down"
+                        size={16}
+                        color={(anchorVotes[selectedAnchor.anchor_id]?.userVote ?? selectedAnchor.user_vote) === "DOWNVOTE" ? colors.white : colors.muted}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {(() => {
+                  const isSaved = savedAnchorIds.has(selectedAnchor.anchor_id);
+                  const isSavingThis = savingAnchorId === selectedAnchor.anchor_id;
+                  return (
+                    <TouchableOpacity
+                      style={[styles.saveButton, isSaved && styles.saveButtonActive]}
+                      onPress={() => handleToggleSave(selectedAnchor.anchor_id)}
+                      disabled={isSavingThis}
+                      activeOpacity={0.7}
+                    >
+                      {isSavingThis ? (
+                        <ActivityIndicator size="small" color={isSaved ? colors.white : colors.accentPink} />
+                      ) : (
+                        <Feather
+                          name="bookmark"
+                          size={14}
+                          color={isSaved ? colors.white : colors.accentPink}
+                        />
+                      )}
+                      <Text
+                        style={[
+                          styles.saveButtonText,
+                          isSaved && styles.saveButtonTextActive,
+                        ]}
+                      >
+                        {isSaved ? "Saved" : "Save to Library"}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })()}
                 {selectedAnchor.creator_id === session?.user_id ? (
                   <TouchableOpacity
                     style={styles.editButton}
@@ -1571,6 +1756,19 @@ export default function DiscoveryScreen({ route }: Props) {
           </TouchableOpacity>
         )}
       </Animated.View>
+
+      {toastMessage && (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.toast,
+            { bottom: insets.bottom + 120, opacity: toastOpacity },
+          ]}
+        >
+          <Feather name="bookmark" size={14} color={colors.white} />
+          <Text style={styles.toastText}>{toastMessage}</Text>
+        </Animated.View>
+      )}
 
       {selectedAnchor && (
         <ReportAnchorModal
@@ -2340,5 +2538,82 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.white,
     fontWeight: "700",
-  }
+  },
+  saveButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 14,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.accentPink,
+    borderRadius: 14,
+  },
+  saveButtonActive: {
+    backgroundColor: colors.accentPink,
+    borderColor: colors.accentPink,
+  },
+  saveButtonText: {
+    fontSize: 15,
+    color: colors.accentPink,
+    fontWeight: "700",
+  },
+  saveButtonTextActive: {
+    color: colors.white,
+  },
+  toast: {
+    position: "absolute",
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#1f2937",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 999,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  toastText: {
+    color: colors.white,
+    fontSize: 14,
+    fontWeight: "700",
+  }, 
+
+  voteRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 16,
+    paddingVertical: 12,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+  },
+  voteButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#f3f4f6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  voteButtonActive: {
+    backgroundColor: colors.success,
+  },
+  voteButtonDownActive: {
+    backgroundColor: colors.error,
+  },
+  voteCount: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: colors.text,
+    minWidth: 30,
+    textAlign: "center",
+  },
 });

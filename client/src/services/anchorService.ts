@@ -26,6 +26,8 @@ export type NearbyAnchor = {
   is_unlocked: boolean;
   content_type: AnchorContentType[] | null;
   tags: string[] | null;
+  net_votes: number;
+  user_vote: "UPVOTE" | "DOWNVOTE" | null;
 };
 
 export type CreateAnchorBody = {
@@ -291,4 +293,23 @@ export async function uploadAnchorAttachment(
   }
 
   return response.json();
+}
+
+export type VoteResponse = {
+  message: string;
+  anchor_id: string;
+  net_votes: number;
+  user_vote: "UPVOTE" | "DOWNVOTE" | null;
+};
+
+export async function voteAnchor(
+  anchorId: string,
+  vote: "UPVOTE" | "DOWNVOTE",
+  token: string,
+): Promise<VoteResponse> {
+  return apiRequest<VoteResponse>(`/anchors/${anchorId}/vote`, {
+    method: "POST",
+    token,
+    body: { vote },
+  });
 }
