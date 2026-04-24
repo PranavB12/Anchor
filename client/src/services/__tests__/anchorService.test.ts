@@ -36,6 +36,7 @@ test("getNearbyAnchors sends repeated query params for all selected filters", as
     {
       method: "GET",
       token: "access-token",
+      useFileSystemBypass: false,
     },
   );
 });

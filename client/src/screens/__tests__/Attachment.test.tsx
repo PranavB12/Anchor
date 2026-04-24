@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, fireEvent } from '@testing-library/react-native';
+import { render, fireEvent, waitFor, cleanup } from '@testing-library/react-native';
 import AnchorCreation from '../AnchorCreation';
 import * as DocumentPicker from "expo-document-picker";
 import { Alert } from 'react-native';
@@ -7,10 +7,9 @@ import { AuthProvider } from '../../context/AuthContext';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 
+afterEach(cleanup);
+
 jest.mock('expo-document-picker');
-jest.mock('react-native/Libraries/Alert/Alert', () => ({
-    alert: jest.fn(),
-}));
 
 jest.mock("@rnmapbox/maps", () => {
   const React = require("react");
@@ -63,37 +62,54 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 );
 
 jest.mock('../../context/AuthContext', () => ({
-    ...jest.requireActual('../../context/AuthContext'),
-    AuthProvider: ({ children }: any) => children,
-    useAuth: () => ({ session: { access_token: "test", user_id: "u1" } })
+  ...jest.requireActual('../../context/AuthContext'),
+  AuthProvider: ({ children }: any) => children,
+  useAuth: () => ({ session: { access_token: "test", user_id: "u1" } })
 }));
+
 describe('AnchorCreation File Attachments', () => {
-    it('shows alert if file exceeds 10MB', async () => {
-        (DocumentPicker.getDocumentAsync as jest.Mock).mockResolvedValueOnce({
-            canceled: false,
-            assets: [{ uri: 'file://too-big.png', name: 'big.png', size: 10 * 1024 * 1024 + 10 }],
-        });
+  let alertSpy: jest.SpyInstance;
 
-        const alertSpy = jest.spyOn(Alert, 'alert');
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // Safely spy on Alert without breaking TurboModules
+    alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  });
 
-        const { getByText } = render(
-            <SafeAreaProvider>
-                <NavigationContainer>
-                    <AnchorCreation route={{ params: { latitude: 0, longitude: 0, radius: 10 } }} navigation={{ navigate: jest.fn() } as any} />
-                </NavigationContainer>
-            </SafeAreaProvider>
-        );
+  afterEach(() => {
+    alertSpy.mockRestore();
+  });
 
-        // switch to file content type
-        fireEvent.press(getByText("Text"));
-        fireEvent.press(getByText("File Attachment"));
-
-        // press 'Tap to attach a file'
-        fireEvent.press(getByText('Tap to attach a file'));
-
-        // wait for promise to clear
-        await new Promise(process.nextTick);
-
-        expect(alertSpy).toHaveBeenCalledWith("File too large", "Please select a file smaller than 10MB.");
+  it('shows alert if file exceeds 10MB', async () => {
+    (DocumentPicker.getDocumentAsync as jest.Mock).mockResolvedValueOnce({
+      canceled: false,
+      assets: [{ uri: 'file://too-big.png', name: 'big.png', size: 10 * 1024 * 1024 + 10 }],
     });
+
+    const { getByText, unmount } = render(
+      <SafeAreaProvider>
+        <NavigationContainer>
+          <AnchorCreation route={{ params: { latitude: 0, longitude: 0, radius: 10 } }} navigation={{ navigate: jest.fn() } as any} />
+        </NavigationContainer>
+      </SafeAreaProvider>
+    );
+
+    // switch to file content type
+    fireEvent.press(getByText("Text"));
+    fireEvent.press(getByText("File Attachment"));
+
+    // press 'Tap to attach a file'
+    fireEvent.press(getByText('Tap to attach a file'));
+
+    // Wait for async validation and Alert
+    await waitFor(() => {
+      expect(alertSpy).toHaveBeenCalledWith(
+        "File too large",
+        "Please select a file smaller than 10MB."
+      );
+    });
+
+    // Clean up component to prevent memory leaks in test
+    unmount();
+  });
 });

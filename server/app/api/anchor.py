@@ -416,6 +416,7 @@ def _row_to_response(row, net_votes: int = 0, user_vote: Optional[str] = None) -
     return AnchorResponse(
         anchor_id=row.anchor_id,
         creator_id=row.creator_id,
+        circle_id=getattr(row, "circle_id", None),
         title=row.title,
         description=row.description,
         latitude=row.latitude,
