@@ -5,6 +5,8 @@ import type {
   AnchorVisibility,
 } from "./anchorService";
 
+export type SavedAnchorExpirationStatus = "LIVE" | "EXPIRED";
+
 export type SavedAnchor = {
   anchor_id: string;
   creator_id: string;
@@ -21,6 +23,7 @@ export type SavedAnchor = {
   activation_time: string | null;
   expiration_time: string | null;
   always_active: boolean;
+  expiration_status: SavedAnchorExpirationStatus;
   content_type: AnchorContentType[] | null;
   tags: string[] | null;
   saved_at: string;
@@ -34,8 +37,16 @@ export async function saveAnchor(anchorId: string, token: string) {
   });
 }
 
-export async function getLibrary(token: string) {
-  return apiRequest<SavedAnchor[]>("/user/library", {
+export async function getLibrary(
+  token: string,
+  expirationStatus?: SavedAnchorExpirationStatus,
+) {
+  const query = new URLSearchParams();
+  if (expirationStatus) {
+    query.set("expiration_status", expirationStatus);
+  }
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return apiRequest<SavedAnchor[]>(`/user/library${suffix}`, {
     method: "GET",
     token,
   });

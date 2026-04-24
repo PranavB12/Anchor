@@ -3,8 +3,11 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
+  Modal,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -17,8 +20,13 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../navigation/AppNavigator";
 import { useAuth } from "../context/AuthContext";
 import {
+  getAnchorAttachments,
+  type AnchorAttachment,
+} from "../services/anchorService";
+import {
   getLibrary,
   removeFromLibrary,
+  type SavedAnchorExpirationStatus,
   type SavedAnchor,
 } from "../services/libraryService";
 
@@ -36,6 +44,8 @@ const colors = {
   success: "#027a48",
 };
 
+const libraryTabs: SavedAnchorExpirationStatus[] = ["LIVE", "EXPIRED"];
+
 function formatSavedAt(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
@@ -46,10 +56,35 @@ function formatSavedAt(value: string): string {
   });
 }
 
+function formatDateTime(value: string | null): string {
+  if (!value) return "No end time";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 function formatVisibility(value: SavedAnchor["visibility"]) {
   if (value === "CIRCLE_ONLY") return "Circle";
   if (value === "PRIVATE") return "Private";
   return "Public";
+}
+
+function formatExpirationSummary(item: SavedAnchor) {
+  if (item.expiration_status === "EXPIRED") {
+    return item.expiration_time
+      ? `Expired ${formatSavedAt(item.expiration_time)}`
+      : "Expired";
+  }
+  if (item.always_active) return "Never expires";
+  return item.expiration_time
+    ? `Expires ${formatSavedAt(item.expiration_time)}`
+    : "No end time";
 }
 
 export default function LibraryScreen({ navigation }: Props) {
@@ -57,10 +92,16 @@ export default function LibraryScreen({ navigation }: Props) {
   const token = session?.access_token;
 
   const [items, setItems] = useState<SavedAnchor[]>([]);
+  const [activeTab, setActiveTab] = useState<SavedAnchorExpirationStatus>("LIVE");
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [selectedExpiredAnchor, setSelectedExpiredAnchor] = useState<SavedAnchor | null>(null);
+  const [detailAttachments, setDetailAttachments] = useState<AnchorAttachment[]>([]);
+  const [detailErrorMessage, setDetailErrorMessage] = useState<string | null>(null);
+  const [isDetailVisible, setIsDetailVisible] = useState(false);
+  const [isDetailLoading, setIsDetailLoading] = useState(false);
 
   const loadLibrary = useCallback(
     async (mode: "initial" | "refresh" = "initial") => {
@@ -72,7 +113,7 @@ export default function LibraryScreen({ navigation }: Props) {
       }
       setErrorMessage(null);
       try {
-        const data = await getLibrary(token);
+        const data = await getLibrary(token, activeTab);
         setItems(data);
       } catch (err) {
         const message = err instanceof Error ? err.message : "Failed to load library.";
@@ -82,11 +123,11 @@ export default function LibraryScreen({ navigation }: Props) {
         setIsRefreshing(false);
       }
     },
-    [token],
+    [activeTab, token],
   );
 
   useEffect(() => {
-    loadLibrary("initial");
+    void loadLibrary("initial");
   }, [loadLibrary]);
 
   const handleRemove = useCallback(
@@ -122,6 +163,36 @@ export default function LibraryScreen({ navigation }: Props) {
     [items, token],
   );
 
+  const closeExpiredAnchorDetail = useCallback(() => {
+    setIsDetailVisible(false);
+    setSelectedExpiredAnchor(null);
+    setDetailAttachments([]);
+    setDetailErrorMessage(null);
+    setIsDetailLoading(false);
+  }, []);
+
+  const handleOpenExpiredAnchor = useCallback(
+    async (anchor: SavedAnchor) => {
+      if (!token) return;
+      setSelectedExpiredAnchor(anchor);
+      setDetailAttachments([]);
+      setDetailErrorMessage(null);
+      setIsDetailVisible(true);
+      setIsDetailLoading(true);
+      try {
+        const attachments = await getAnchorAttachments(anchor.anchor_id, token);
+        setDetailAttachments(attachments);
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Failed to load saved content.";
+        setDetailErrorMessage(message);
+      } finally {
+        setIsDetailLoading(false);
+      }
+    },
+    [token],
+  );
+
   const handleOpenOnMap = useCallback(
     (anchorId: string) => {
       navigation.navigate("Discovery", { targetAnchorId: anchorId });
@@ -146,10 +217,30 @@ export default function LibraryScreen({ navigation }: Props) {
         </View>
       ) : null}
 
+      <View style={styles.tabRow}>
+        {libraryTabs.map((tab) => {
+          const isActive = activeTab === tab;
+          return (
+            <TouchableOpacity
+              key={tab}
+              style={[styles.tabButton, isActive && styles.tabButtonActive]}
+              onPress={() => setActiveTab(tab)}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.tabButtonText, isActive && styles.tabButtonTextActive]}>
+                {tab === "LIVE" ? "Live" : "Expired"}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
       {isLoading ? (
         <View style={styles.centerState}>
           <ActivityIndicator color={colors.accentPink} />
-          <Text style={styles.centerStateText}>Loading your library...</Text>
+          <Text style={styles.centerStateText}>
+            Loading {activeTab === "LIVE" ? "live" : "expired"} anchors...
+          </Text>
         </View>
       ) : (
         <FlatList
@@ -165,22 +256,52 @@ export default function LibraryScreen({ navigation }: Props) {
           }
           renderItem={({ item }) => {
             const isRemoving = removingId === item.anchor_id;
+            const isExpired = item.expiration_status === "EXPIRED";
             return (
               <Pressable
                 style={styles.card}
-                onPress={() => handleOpenOnMap(item.anchor_id)}
+                onPress={() =>
+                  isExpired
+                    ? void handleOpenExpiredAnchor(item)
+                    : handleOpenOnMap(item.anchor_id)
+                }
               >
                 <View style={styles.cardHeader}>
-                  <View style={styles.iconWrapper}>
+                  <View
+                    style={[
+                      styles.iconWrapper,
+                      isExpired && styles.iconWrapperExpired,
+                    ]}
+                  >
                     <Feather name="bookmark" size={18} color={colors.accentPink} />
                   </View>
                   <View style={styles.cardInfo}>
-                    <Text style={styles.cardTitle} numberOfLines={1}>
-                      {item.title}
-                    </Text>
+                    <View style={styles.cardTitleRow}>
+                      <Text style={styles.cardTitle} numberOfLines={1}>
+                        {item.title}
+                      </Text>
+                      <View
+                        style={[
+                          styles.statusPill,
+                          isExpired ? styles.statusPillExpired : styles.statusPillLive,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.statusPillText,
+                            isExpired
+                              ? styles.statusPillTextExpired
+                              : styles.statusPillTextLive,
+                          ]}
+                        >
+                          {isExpired ? "Expired" : "Live"}
+                        </Text>
+                      </View>
+                    </View>
                     <Text style={styles.cardSubtitle}>
                       {formatVisibility(item.visibility)} · Saved {formatSavedAt(item.saved_at)}
                     </Text>
+                    <Text style={styles.expirationText}>{formatExpirationSummary(item)}</Text>
                   </View>
                   <TouchableOpacity
                     style={styles.removeButton}
@@ -220,8 +341,14 @@ export default function LibraryScreen({ navigation }: Props) {
                     </Text>
                   </View>
                   <View style={styles.footerRow}>
-                    <Feather name="navigation" size={12} color={colors.accentPink} />
-                    <Text style={styles.footerCta}>Open on map</Text>
+                    <Feather
+                      name={isExpired ? "book-open" : "navigation"}
+                      size={12}
+                      color={colors.accentPink}
+                    />
+                    <Text style={styles.footerCta}>
+                      {isExpired ? "View saved content" : "Open on map"}
+                    </Text>
                   </View>
                 </View>
               </Pressable>
@@ -230,20 +357,147 @@ export default function LibraryScreen({ navigation }: Props) {
           ListEmptyComponent={
             <View style={styles.centerState}>
               <Feather name="bookmark" size={32} color={colors.lightMuted} />
-              <Text style={styles.emptyText}>Your library is empty</Text>
+              <Text style={styles.emptyText}>
+                {activeTab === "LIVE" ? "No live anchors saved" : "No expired anchors saved"}
+              </Text>
               <Text style={styles.emptySubText}>
-                Save anchors from the map to access them anywhere.
+                {activeTab === "LIVE"
+                  ? "Save anchors from the map to keep your active library close at hand."
+                  : "Expired saves will stay here so you can still review their content."}
               </Text>
             </View>
           }
         />
       )}
+
+      <Modal
+        visible={isDetailVisible}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={closeExpiredAnchorDetail}
+      >
+        <SafeAreaView
+          edges={["top", "left", "right", "bottom"]}
+          style={styles.modalSafeArea}
+        >
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={closeExpiredAnchorDetail} style={styles.modalHeaderButton}>
+              <Feather name="arrow-left" size={16} color={colors.text} />
+              <Text style={styles.modalHeaderButtonText}>Back</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Saved Anchor</Text>
+            <View style={styles.modalHeaderButton} />
+          </View>
+
+          {selectedExpiredAnchor ? (
+            <ScrollView
+              contentContainerStyle={styles.modalContent}
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.modalTopCard}>
+                <View style={[styles.statusPill, styles.statusPillExpired]}>
+                  <Text style={[styles.statusPillText, styles.statusPillTextExpired]}>
+                    Expired
+                  </Text>
+                </View>
+                <Text style={styles.modalAnchorTitle}>{selectedExpiredAnchor.title}</Text>
+                <Text style={styles.modalMetaText}>
+                  {formatVisibility(selectedExpiredAnchor.visibility)} · Saved{" "}
+                  {formatSavedAt(selectedExpiredAnchor.saved_at)}
+                </Text>
+                <Text style={styles.modalMetaText}>
+                  Expiration: {formatDateTime(selectedExpiredAnchor.expiration_time)}
+                </Text>
+                {selectedExpiredAnchor.description ? (
+                  <Text style={styles.modalDescription}>
+                    {selectedExpiredAnchor.description}
+                  </Text>
+                ) : null}
+                {selectedExpiredAnchor.tags && selectedExpiredAnchor.tags.length > 0 ? (
+                  <View style={styles.tagRow}>
+                    {selectedExpiredAnchor.tags.map((tag) => (
+                      <View key={tag} style={styles.tagChip}>
+                        <Text style={styles.tagText}>{tag}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+              </View>
+
+              <View style={styles.detailSection}>
+                <Text style={styles.detailSectionTitle}>Saved Content</Text>
+                {detailErrorMessage ? (
+                  <View style={styles.errorBanner}>
+                    <Feather name="alert-circle" size={14} color={colors.error} />
+                    <Text style={styles.errorText}>{detailErrorMessage}</Text>
+                  </View>
+                ) : null}
+                {isDetailLoading ? (
+                  <View style={styles.detailLoadingState}>
+                    <ActivityIndicator color={colors.accentPink} />
+                    <Text style={styles.centerStateText}>Loading content...</Text>
+                  </View>
+                ) : detailAttachments.length > 0 ? (
+                  detailAttachments.map((attachment) => (
+                    <View key={attachment.content_id} style={styles.attachmentCard}>
+                      <View style={styles.attachmentHeader}>
+                        <View style={styles.attachmentTypePill}>
+                          <Text style={styles.attachmentTypeText}>
+                            {attachment.content_type}
+                          </Text>
+                        </View>
+                      </View>
+                      {attachment.content_type === "TEXT" && attachment.text_body ? (
+                        <Text style={styles.attachmentText}>{attachment.text_body}</Text>
+                      ) : null}
+                      {attachment.content_type === "LINK" ? (
+                        <View style={styles.attachmentBody}>
+                          <Text style={styles.attachmentTitle}>
+                            {attachment.page_title || "Saved link"}
+                          </Text>
+                          <Text style={styles.attachmentMeta}>
+                            {attachment.url || "No URL available"}
+                          </Text>
+                        </View>
+                      ) : null}
+                      {attachment.content_type === "FILE" ? (
+                        attachment.mime_type?.startsWith("image/") && attachment.file_url ? (
+                          <Image
+                            source={{ uri: attachment.file_url }}
+                            style={styles.attachmentImage}
+                            resizeMode="cover"
+                          />
+                        ) : (
+                          <View style={styles.attachmentFileRow}>
+                            <Feather name="file" size={18} color={colors.accentPink} />
+                            <Text style={styles.attachmentTitle}>
+                              {attachment.file_name || "Attachment"}
+                            </Text>
+                          </View>
+                        )
+                      ) : null}
+                    </View>
+                  ))
+                ) : (
+                  <View style={styles.detailLoadingState}>
+                    <Feather name="book-open" size={22} color={colors.lightMuted} />
+                    <Text style={styles.centerStateText}>
+                      No additional attachments were saved with this anchor.
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </ScrollView>
+          ) : null}
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.canvas },
+  modalSafeArea: { flex: 1, backgroundColor: colors.canvas },
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -268,6 +522,33 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   errorText: { color: colors.error, fontSize: 13, flex: 1 },
+  tabRow: {
+    flexDirection: "row",
+    gap: 10,
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+  },
+  tabButton: {
+    flex: 1,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.white,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  tabButtonActive: {
+    backgroundColor: colors.accentPink,
+    borderColor: colors.accentPink,
+  },
+  tabButtonText: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  tabButtonTextActive: {
+    color: colors.white,
+  },
   centerState: {
     flex: 1,
     alignItems: "center",
@@ -302,9 +583,43 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  iconWrapperExpired: {
+    backgroundColor: "#FEF3F2",
+  },
   cardInfo: { flex: 1 },
+  cardTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 2,
+  },
   cardTitle: { fontSize: 15, fontWeight: "700", color: colors.text },
+  statusPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  statusPillLive: {
+    backgroundColor: "#E7F6EC",
+    borderColor: "#A6E1B8",
+  },
+  statusPillExpired: {
+    backgroundColor: "#FEF3F2",
+    borderColor: "#FECACA",
+  },
+  statusPillText: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  statusPillTextLive: {
+    color: colors.success,
+  },
+  statusPillTextExpired: {
+    color: colors.error,
+  },
   cardSubtitle: { fontSize: 12, color: colors.muted, marginTop: 2 },
+  expirationText: { fontSize: 12, color: colors.accentPink, marginTop: 4, fontWeight: "600" },
   removeButton: {
     width: 36,
     height: 36,
@@ -335,4 +650,126 @@ const styles = StyleSheet.create({
   footerRow: { flexDirection: "row", alignItems: "center", gap: 5 },
   footerText: { fontSize: 12, color: colors.muted },
   footerCta: { fontSize: 12, color: colors.accentPink, fontWeight: "700" },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+  },
+  modalHeaderButton: {
+    width: 84,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  modalHeaderButtonText: {
+    color: colors.accentPink,
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  modalContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+    gap: 16,
+  },
+  modalTopCard: {
+    backgroundColor: colors.white,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 16,
+    gap: 10,
+  },
+  modalAnchorTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: colors.text,
+  },
+  modalMetaText: {
+    fontSize: 13,
+    color: colors.muted,
+  },
+  modalDescription: {
+    fontSize: 14,
+    color: colors.text,
+    lineHeight: 21,
+  },
+  detailSection: {
+    gap: 12,
+  },
+  detailSectionTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  detailLoadingState: {
+    backgroundColor: colors.white,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
+  attachmentCard: {
+    backgroundColor: colors.white,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 14,
+    gap: 12,
+  },
+  attachmentHeader: {
+    flexDirection: "row",
+    justifyContent: "flex-start",
+  },
+  attachmentTypePill: {
+    backgroundColor: colors.canvas,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  attachmentTypeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: colors.muted,
+  },
+  attachmentBody: {
+    gap: 4,
+  },
+  attachmentTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: colors.text,
+    flex: 1,
+  },
+  attachmentMeta: {
+    fontSize: 12,
+    color: colors.muted,
+  },
+  attachmentText: {
+    fontSize: 14,
+    lineHeight: 21,
+    color: colors.text,
+  },
+  attachmentImage: {
+    width: "100%",
+    height: 220,
+    borderRadius: 14,
+    backgroundColor: colors.canvas,
+  },
+  attachmentFileRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
 });
