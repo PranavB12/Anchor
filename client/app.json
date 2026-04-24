@@ -50,7 +50,8 @@
         }
       ],
       "expo-notifications",
-      "expo-secure-store"
+      "expo-secure-store",
+      "@reactvision/react-viro"
     ],
     "extra": {
       "eas": {
