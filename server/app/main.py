@@ -19,8 +19,7 @@ from app.api.circle import router as circle_router
 from app.api.library import router as library_router
 
 
-@asynccontextmanager
-async def lifespan(_app: FastAPI):
+def _bootstrap_core_tables():
     db = SessionLocal()
     try:
         check_col = db.execute(text("""
@@ -60,12 +59,51 @@ async def lifespan(_app: FastAPI):
                 INDEX idx_blocked_users_blocked_user (blocked_user_id)
             )
         """))
+        db.execute(text("""
+            CREATE TABLE IF NOT EXISTS circles (
+                circle_id CHAR(36) PRIMARY KEY,
+                owner_id CHAR(36) NOT NULL,
+                name VARCHAR(255) NOT NULL,
+                description TEXT NULL,
+                visibility ENUM('PUBLIC', 'PRIVATE') NOT NULL DEFAULT 'PRIVATE',
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (owner_id) REFERENCES users(user_id) ON DELETE CASCADE,
+                INDEX idx_circles_owner (owner_id)
+            )
+        """))
+        db.execute(text("""
+            CREATE TABLE IF NOT EXISTS circle_members (
+                circle_id CHAR(36) NOT NULL,
+                user_id CHAR(36) NOT NULL,
+                joined_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (circle_id, user_id),
+                FOREIGN KEY (circle_id) REFERENCES circles(circle_id) ON DELETE CASCADE,
+                FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+            )
+        """))
+        check_circle_id_col = db.execute(
+            text("SHOW COLUMNS FROM anchors LIKE 'circle_id'")
+        ).fetchone()
+        if check_circle_id_col is None:
+            db.execute(text("ALTER TABLE anchors ADD COLUMN circle_id CHAR(36) NULL"))
+            db.execute(text("ALTER TABLE anchors ADD INDEX idx_anchors_circle_id (circle_id)"))
+            db.execute(text("""
+                ALTER TABLE anchors
+                ADD CONSTRAINT fk_anchors_circle_id
+                FOREIGN KEY (circle_id) REFERENCES circles(circle_id) ON DELETE SET NULL
+            """))
         db.commit()
     finally:
         db.close()
 
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    _bootstrap_core_tables()
     yield
 
+
+_bootstrap_core_tables()
 
 app = FastAPI(
     title="Anchor API",

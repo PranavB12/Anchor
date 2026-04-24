@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -13,6 +13,7 @@ import {
   Pressable,
   Alert,
 } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
 import { Feather } from "@expo/vector-icons";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../navigation/AppNavigator";
@@ -24,14 +25,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { useAuth } from "../context/AuthContext";
 import { AnchorDraft } from "../services/anchorService";
 import * as DocumentPicker from "expo-document-picker";
-
-
-// Dummy circle. TODO: CHANGE THEM LATER TO GET FROM BACKEND!!!
-const DUMMY_CIRCLES = [
-  { id: "1", name: "Friends", emoji: "🔥", memberCount: 8 },
-  { id: "2", name: "Work", emoji: "💼", memberCount: 14 },
-  { id: "3", name: "Club", emoji: "📷", memberCount: 23 },
-];
+import { getUserCircles, type UserCircle } from "../services/circleService";
 
 const SUGGESTED_TAGS = ["nature", "chill", "secret", "food", "art", "music", "study", "event", "surprise", "local"];
 
@@ -58,7 +52,9 @@ export default function AnchorCreation({ navigation, route }: Props) {
 
   // Cirlce entry
   const [showCircleModal, setShowCircleModal] = useState(false);
-  const [selectedCircles, setSelectedCircles] = useState<string[]>([]);
+  const [circles, setCircles] = useState<UserCircle[]>([]);
+  const [isLoadingCircles, setIsLoadingCircles] = useState(false);
+  const [selectedCircleId, setSelectedCircleId] = useState<string | null>(null);
 
   // Content entry
   const [showContentTypeModal, setShowContentTypeModal] = useState(false);
@@ -71,6 +67,30 @@ export default function AnchorCreation({ navigation, route }: Props) {
 
   // File Attachment
   const [selectedFile, setSelectedFile] = useState<{ uri: string; name: string; type: string } | null>(null);
+
+  const loadCircles = useCallback(async () => {
+    if (!session?.access_token) {
+      return;
+    }
+    setIsLoadingCircles(true);
+    try {
+      const data = await getUserCircles(session.access_token);
+      setCircles(data);
+      setSelectedCircleId((previous) =>
+        previous && data.some((circle) => circle.circle_id === previous) ? previous : null,
+      );
+    } catch {
+      setCircles([]);
+    } finally {
+      setIsLoadingCircles(false);
+    }
+  }, [session?.access_token]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadCircles();
+    }, [loadCircles]),
+  );
 
   const handlePickFile = async () => {
     try {
@@ -218,15 +238,18 @@ export default function AnchorCreation({ navigation, route }: Props) {
   };
 
   // Circles Logic
+  const selectedCircle = circles.find((circle) => circle.circle_id === selectedCircleId) ?? null;
   const toggleCircle = (id: string) => {
-    setSelectedCircles((prev) =>
-      prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]
-    );
+    setSelectedCircleId((prev) => (prev === id ? null : id));
   };
 
   const handleVisibilityPress = (id: "Public" | "Circle" | "Private") => {
     setVisibility(id);
-    if (id === "Circle") setShowCircleModal(true);
+    if (id === "Circle") {
+      setShowCircleModal(true);
+      return;
+    }
+    setSelectedCircleId(null);
   };
 
   // Tags UI logic
@@ -265,6 +288,10 @@ export default function AnchorCreation({ navigation, route }: Props) {
       Alert.alert("Invalid Unlock Limit", "Please enter a valid unlock limit.");
       return null;
     }
+    if (visibility === "Circle" && !selectedCircle) {
+      Alert.alert("Choose a Circle", "Select one circle for this anchor.");
+      return null;
+    }
 
     const finalActivationTime =
       startTime && startTime >= now ? startTime.toISOString() : now.toISOString();
@@ -275,6 +302,8 @@ export default function AnchorCreation({ navigation, route }: Props) {
       longitude,
       altitude,
       visibility: visibilityMap[visibility],
+      circle_id: visibility === "Circle" ? selectedCircle?.circle_id ?? null : null,
+      circle_name: visibility === "Circle" ? selectedCircle?.name ?? null : null,
       unlock_radius: Math.max(10, Math.min(100, Math.round(radius))),
       activation_time: finalActivationTime,
       expiration_time: alwaysActive ? null : (expiryTime ? expiryTime.toISOString() : null),
@@ -319,8 +348,7 @@ export default function AnchorCreation({ navigation, route }: Props) {
     icon: keyof typeof Feather.glyphMap;
   }) => {
     const isSelected = visibility === id;
-    const selectedCircleNames =
-      id === "Circle" && selectedCircles.length > 0 ? DUMMY_CIRCLES.filter((c) => selectedCircles.includes(c.id)).map((c) => c.name).join(", ") : null;
+    const selectedCircleLabel = id === "Circle" ? selectedCircle?.name ?? null : null;
     return (
       <TouchableOpacity
         style={[styles.optionCard, isSelected && styles.optionCardSelected]}
@@ -334,7 +362,7 @@ export default function AnchorCreation({ navigation, route }: Props) {
           <Text style={styles.optionTitle}>{optTitle}</Text>
           <Text style={styles.optionSubtitle} numberOfLines={1}>
             {
-              id === "Circle" && selectedCircleNames ? selectedCircleNames : subtitle
+              id === "Circle" && selectedCircleLabel ? selectedCircleLabel : subtitle
             }
           </Text>
         </View>
@@ -345,7 +373,7 @@ export default function AnchorCreation({ navigation, route }: Props) {
               style={styles.editCirclesBtn}
             >
               <Text style={styles.editCirclesBtnText}>
-                {selectedCircles.length > 0 ? `${selectedCircles.length} selected` : "Choose"}
+                {selectedCircle ? "Selected" : "Choose"}
               </Text>
               <Feather name="chevron-right" size={14} color={colors.accentPink} />
             </TouchableOpacity>
@@ -670,55 +698,77 @@ export default function AnchorCreation({ navigation, route }: Props) {
               </View>
 
               <Text style={styles.sheetSubtitle}>
-                Select the circles that can unlock this anchor
+                Choose the one circle that can access this anchor
               </Text>
 
               <ScrollView style={styles.circleList} showsVerticalScrollIndicator={false}>
-                {DUMMY_CIRCLES.map((circle) => {
-                  const isChosen = selectedCircles.includes(circle.id);
-                  return (
+                {isLoadingCircles ? (
+                  <View style={styles.circleEmptyState}>
+                    <Text style={styles.circleEmptyText}>Loading your circles...</Text>
+                  </View>
+                ) : circles.length === 0 ? (
+                  <View style={styles.circleEmptyState}>
+                    <Text style={styles.circleEmptyTitle}>No circles yet</Text>
+                    <Text style={styles.circleEmptyText}>
+                      Create a circle first, then come back to share this anchor with it.
+                    </Text>
                     <TouchableOpacity
-                      key={circle.id}
-                      style={styles.circleRow}
-                      onPress={() => toggleCircle(circle.id)}
-                      activeOpacity={0.7}
+                      style={styles.circleCreateBtn}
+                      onPress={() => {
+                        setShowCircleModal(false);
+                        navigation.navigate("CreateCircle");
+                      }}
+                      activeOpacity={0.8}
                     >
-                      {/* Avatar */}
-                      <View style={styles.circleAvatar}>
-                        <Text style={styles.circleEmoji}>{circle.emoji}</Text>
-                      </View>
-                      {/* Info */}
-                      <View style={styles.circleInfo}>
-                        <Text style={styles.circleName}>{circle.name}</Text>
-                        <Text style={styles.circleMeta}>{circle.memberCount} members</Text>
-                      </View>
-                      {/* Checkbox */}
-                      <View
-                        style={[
-                          styles.circleCheckbox,
-                          isChosen && styles.circleCheckboxSelected,
-                        ]}
-                      >
-                        {isChosen && <Feather name="check" size={13} color={colors.white} />}
-                      </View>
+                      <Text style={styles.circleCreateBtnText}>Create Circle</Text>
                     </TouchableOpacity>
-                  );
-                })}
+                  </View>
+                ) : (
+                  circles.map((circle) => {
+                    const isChosen = selectedCircleId === circle.circle_id;
+                    return (
+                      <TouchableOpacity
+                        key={circle.circle_id}
+                        style={styles.circleRow}
+                        onPress={() => toggleCircle(circle.circle_id)}
+                        activeOpacity={0.7}
+                      >
+                        <View style={styles.circleAvatar}>
+                          <Feather name="users" size={20} color={colors.accentPink} />
+                        </View>
+                        <View style={styles.circleInfo}>
+                          <Text style={styles.circleName}>{circle.name}</Text>
+                          <Text style={styles.circleMeta}>
+                            {circle.member_count} {circle.member_count === 1 ? "member" : "members"} ·{" "}
+                            {circle.visibility === "PUBLIC" ? "Public" : "Private"}
+                          </Text>
+                        </View>
+                        <View
+                          style={[
+                            styles.circleCheckbox,
+                            isChosen && styles.circleCheckboxSelected,
+                          ]}
+                        >
+                          {isChosen ? <Feather name="check" size={13} color={colors.white} /> : null}
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })
+                )}
               </ScrollView>
 
               {/* Done button */}
               <TouchableOpacity
                 style={[
                   styles.sheetDoneBtn,
-                  selectedCircles.length === 0 && styles.sheetDoneBtnDisabled,
+                  !selectedCircleId && styles.sheetDoneBtnDisabled,
                 ]}
                 onPress={() => setShowCircleModal(false)}
+                disabled={!selectedCircleId}
                 activeOpacity={0.8}
               >
                 <Text style={styles.sheetDoneBtnText}>
-                  {selectedCircles.length === 0
-                    ? "Select at least one circle"
-                    : `Done · ${selectedCircles.length} selected`}
+                  {!selectedCircleId ? "Select one circle" : `Done · ${selectedCircle?.name ?? "1 selected"}`}
                 </Text>
               </TouchableOpacity>
             </Pressable>
@@ -1142,6 +1192,34 @@ const styles = StyleSheet.create({
   sheetTitle: { fontSize: 18, fontWeight: "700", color: colors.text },
   sheetSubtitle: { fontSize: 14, color: colors.muted, marginBottom: 16 },
   circleList: { marginBottom: 16 },
+  circleEmptyState: {
+    paddingVertical: 24,
+    alignItems: "center",
+    gap: 8,
+  },
+  circleEmptyTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  circleEmptyText: {
+    fontSize: 13,
+    color: colors.muted,
+    textAlign: "center",
+    lineHeight: 19,
+  },
+  circleCreateBtn: {
+    marginTop: 8,
+    borderRadius: 12,
+    backgroundColor: colors.accentPink,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  circleCreateBtnText: {
+    color: colors.white,
+    fontSize: 14,
+    fontWeight: "700",
+  },
   circleRow: {
     flexDirection: "row",
     alignItems: "center",

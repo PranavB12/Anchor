@@ -20,6 +20,7 @@ class CreateAnchorRequest(BaseModel):
     longitude: float = Field(ge=-180, le=180)
     altitude: Optional[float] = None
     visibility: str = Field(description="PUBLIC, PRIVATE, or CIRCLE_ONLY")
+    circle_id: Optional[str] = None
     # unlock_radius is clamped to 10–100 m; defaults to 50 m
     unlock_radius: int = Field(default=50, ge=10, le=100)
     # max_unlock=None means unlimited unlocks
@@ -39,6 +40,7 @@ class UpdateAnchorRequest(BaseModel):
     longitude: Optional[float] = Field(default=None, ge=-180, le=180)
     altitude: Optional[float] = None
     visibility: Optional[str] = None
+    circle_id: Optional[str] = None
     unlock_radius: Optional[int] = Field(default=None, ge=10, le=100)
     max_unlock: Optional[int] = None
     activation_time: Optional[datetime] = None
@@ -56,6 +58,7 @@ class AnchorResponse(BaseModel):
     latitude: float
     longitude: float
     altitude: Optional[float] = None
+    circle_id: Optional[str] = None
     # status reflects lifecycle: ACTIVE, EXPIRED, LOCKED, or FLAGGED
     status: str
     visibility: str

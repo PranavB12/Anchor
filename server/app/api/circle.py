@@ -8,16 +8,18 @@ Endpoints:
 """
 
 import uuid
+from typing import List, Optional
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
-from typing import List, Optional
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user_id
 
 router = APIRouter(prefix="/circles", tags=["Circles"])
+VALID_CIRCLE_VISIBILITY = {"PUBLIC", "PRIVATE"}
 
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
@@ -27,6 +29,47 @@ class CircleMemberResponse(BaseModel):
     username: str
     avatar_url: Optional[str] = None
     joined_at: str
+
+
+class CircleResponse(BaseModel):
+    circle_id: str
+    owner_id: str
+    name: str
+    description: Optional[str] = None
+    visibility: str
+    created_at: str
+    member_count: int
+    is_owner: bool
+
+
+class CreateCircleRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    description: Optional[str] = Field(default=None, max_length=500)
+    visibility: str = Field(description="PUBLIC or PRIVATE")
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("name is required")
+        return cleaned
+
+    @field_validator("description")
+    @classmethod
+    def validate_description(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
+
+    @field_validator("visibility")
+    @classmethod
+    def validate_visibility(cls, value: str) -> str:
+        cleaned = value.strip().upper()
+        if cleaned not in VALID_CIRCLE_VISIBILITY:
+            raise ValueError("visibility must be PUBLIC or PRIVATE")
+        return cleaned
 
 
 class InviteMemberRequest(BaseModel):
@@ -40,6 +83,109 @@ class CircleSearchResult(BaseModel):
     description: Optional[str] = None
     member_count: int
     is_member: bool
+
+
+def _row_to_circle_response(row, user_id: str) -> CircleResponse:
+    return CircleResponse(
+        circle_id=row.circle_id,
+        owner_id=row.owner_id,
+        name=row.name,
+        description=row.description,
+        visibility=row.visibility,
+        created_at=str(row.created_at),
+        member_count=row.member_count,
+        is_owner=row.owner_id == user_id,
+    )
+
+
+# ── Create Circle ─────────────────────────────────────────────────────────────
+
+@router.post("/", response_model=CircleResponse, status_code=status.HTTP_201_CREATED)
+def create_circle(
+    payload: CreateCircleRequest,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    circle_id = str(uuid.uuid4())
+
+    db.execute(
+        text("""
+            INSERT INTO circles (circle_id, owner_id, name, description, visibility)
+            VALUES (:circle_id, :owner_id, :name, :description, :visibility)
+        """),
+        {
+            "circle_id": circle_id,
+            "owner_id": user_id,
+            "name": payload.name,
+            "description": payload.description,
+            "visibility": payload.visibility,
+        },
+    )
+    db.execute(
+        text("""
+            INSERT INTO circle_members (circle_id, user_id)
+            VALUES (:circle_id, :user_id)
+        """),
+        {"circle_id": circle_id, "user_id": user_id},
+    )
+    db.commit()
+
+    row = db.execute(
+        text("""
+            SELECT
+                c.circle_id,
+                c.owner_id,
+                c.name,
+                c.description,
+                c.visibility,
+                c.created_at,
+                COUNT(cm.user_id) AS member_count
+            FROM circles c
+            LEFT JOIN circle_members cm ON cm.circle_id = c.circle_id
+            WHERE c.circle_id = :circle_id
+            GROUP BY c.circle_id, c.owner_id, c.name, c.description, c.visibility, c.created_at
+        """),
+        {"circle_id": circle_id},
+    ).fetchone()
+
+    return _row_to_circle_response(row, user_id)
+
+
+# ── Search Public Circles (US8 Task 1) ────────────────────────────────────────
+
+@router.get("/", response_model=List[CircleResponse])
+def get_circles(
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    rows = db.execute(
+        text("""
+            SELECT
+                c.circle_id,
+                c.owner_id,
+                c.name,
+                c.description,
+                c.visibility,
+                c.created_at,
+                COUNT(DISTINCT cm.user_id) AS member_count
+            FROM circles c
+            LEFT JOIN circle_members cm ON cm.circle_id = c.circle_id
+            WHERE c.owner_id = :user_id
+               OR EXISTS (
+                    SELECT 1
+                    FROM circle_members membership
+                    WHERE membership.circle_id = c.circle_id
+                      AND membership.user_id = :user_id
+               )
+            GROUP BY c.circle_id, c.owner_id, c.name, c.description, c.visibility, c.created_at
+            ORDER BY
+                CASE WHEN c.owner_id = :user_id THEN 0 ELSE 1 END,
+                c.created_at DESC
+        """),
+        {"user_id": user_id},
+    ).fetchall()
+
+    return [_row_to_circle_response(row, user_id) for row in rows]
 
 
 # ── Search Public Circles (US8 Task 1) ────────────────────────────────────────
