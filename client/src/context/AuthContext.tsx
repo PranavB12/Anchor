@@ -50,6 +50,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
       return;
     }
 
+    // US1 #3 — when biometric login is enabled, we must not auto-restore into the
+    // authenticated state. Route the user through LoginScreen so Face ID / Touch ID
+    // can gate access to the stored session before it becomes usable.
+    const biometricEnabled = await getBiometricPreference();
+
     try {
       const verified = await verifyAccessToken(stored.access_token);
       const verifiedSession: StoredAuthSession = {
@@ -58,9 +63,14 @@ export function AuthProvider({ children }: PropsWithChildren) {
         email: verified.email,
         username: verified.username,
       };
+      await saveAuthSession(verifiedSession);
+      if (biometricEnabled) {
+        setSession(null);
+        setStatus("unauthenticated");
+        return;
+      }
       setSession(verifiedSession);
       setStatus("authenticated");
-      await saveAuthSession(verifiedSession);
       return;
     } catch {
       // Continue to refresh attempt below.
@@ -82,9 +92,14 @@ export function AuthProvider({ children }: PropsWithChildren) {
         email: verified.email,
         username: verified.username,
       };
+      await saveAuthSession(verifiedSession);
+      if (biometricEnabled) {
+        setSession(null);
+        setStatus("unauthenticated");
+        return;
+      }
       setSession(verifiedSession);
       setStatus("authenticated");
-      await saveAuthSession(verifiedSession);
     } catch {
       await clearAuthSession();
       setSession(null);
