@@ -14,7 +14,7 @@ import json
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -111,6 +111,22 @@ def _refresh_saved_anchor_expiration_statuses(
     db.commit()
 
 
+def _normalize_expiration_status_filter(raw_status: Optional[str]) -> Optional[str]:
+    if raw_status is None:
+        return None
+    normalized = raw_status.strip().upper()
+    allowed = {
+        SavedAnchorExpirationStatus.LIVE,
+        SavedAnchorExpirationStatus.EXPIRED,
+    }
+    if normalized not in allowed:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="expiration_status must be LIVE or EXPIRED",
+        )
+    return normalized
+
+
 # ── POST /user/library/save ───────────────────────────────────────────────────
 
 @router.post(
@@ -184,13 +200,23 @@ def save_anchor(
 
 @router.get("/user/library", response_model=List[SavedAnchorResponse])
 def list_library(
+    expiration_status: Optional[str] = Query(
+        None,
+        description="Filter by expiration status: LIVE or EXPIRED",
+    ),
     user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
     """Return every anchor the user has saved, newest save first."""
+    normalized_expiration_status = _normalize_expiration_status_filter(expiration_status)
     _refresh_saved_anchor_expiration_statuses(db, user_id)
+    filters = ""
+    params = {"user_id": user_id}
+    if normalized_expiration_status:
+        filters = " AND sa.expiration_status = :expiration_status"
+        params["expiration_status"] = normalized_expiration_status
     rows = db.execute(
-        text("""
+        text(f"""
             SELECT
                 a.anchor_id, a.creator_id, a.title, a.description,
                 ST_X(a.location) AS longitude, ST_Y(a.location) AS latitude,
@@ -207,9 +233,10 @@ def list_library(
             FROM saved_anchors sa
             JOIN anchors a ON a.anchor_id = sa.anchor_id
             WHERE sa.user_id = :user_id
+            {filters}
             ORDER BY sa.saved_at DESC
         """),
-        {"user_id": user_id},
+        params,
     ).fetchall()
 
     return [_row_to_saved_response(row) for row in rows]
