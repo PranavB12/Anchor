@@ -77,12 +77,9 @@ class AnchorResponse(BaseModel):
     # Distinct content types attached to this anchor (TEXT, FILE, LINK)
     content_type: Optional[List[str]] = None
     tags: Optional[List[str]] = None
-<<<<<<< Updated upstream
     net_votes: int = 0
     user_vote: Optional[str] = None
-=======
     is_savable: bool = True
->>>>>>> Stashed changes
 
 
 class AnchorFilterOption(BaseModel):

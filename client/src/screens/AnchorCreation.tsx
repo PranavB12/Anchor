@@ -65,6 +65,9 @@ export default function AnchorCreation({ navigation, route }: Props) {
   const [tagInput, setTagInput] = useState("");
   const [tagInputFocused, setTagInputFocused] = useState(false);
 
+  // US2 #2 — whether other users can save this anchor to their library.
+  const [isSavable, setIsSavable] = useState(true);
+
   // File Attachment
   const [selectedFile, setSelectedFile] = useState<{ uri: string; name: string; type: string } | null>(null);
 
@@ -311,6 +314,7 @@ export default function AnchorCreation({ navigation, route }: Props) {
       description: content.trim() || null,
       max_unlock: parsedMaxUnlock,
       tags,
+      is_savable: isSavable,
       attachment: contentType === "file" ? selectedFile : null,
     };
   };
@@ -665,6 +669,24 @@ export default function AnchorCreation({ navigation, route }: Props) {
               </TouchableOpacity>
             ))}
           </View>
+
+          {/* US2 #2 — Allow other users to save this anchor to their library */}
+          <View style={styles.savableRow}>
+            <View style={styles.savableTextBlock}>
+              <Text style={styles.savableLabel}>Allow others to save this</Text>
+              <Text style={styles.savableHint}>
+                {isSavable
+                  ? "Viewers can bookmark this anchor to their personal library."
+                  : "Marked unsavable — viewers won't be able to bookmark it."}
+              </Text>
+            </View>
+            <Switch
+              value={isSavable}
+              onValueChange={setIsSavable}
+              trackColor={{ false: "#d1d5db", true: "#f7a2b4" }}
+              thumbColor={isSavable ? colors.accentPink : "#f9fafb"}
+            />
+          </View>
         </ScrollView>
 
         {/* DROP ANCHOR AND HANDLE REST */}
@@ -891,6 +913,33 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.text,
     fontWeight: "600",
+  },
+  savableRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    marginTop: 8,
+    marginBottom: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.white,
+  },
+  savableTextBlock: {
+    flex: 1,
+  },
+  savableLabel: {
+    fontSize: 14,
+    color: colors.text,
+    fontWeight: "600",
+  },
+  savableHint: {
+    fontSize: 12,
+    color: colors.muted,
+    marginTop: 2,
   },
   input: {
     borderWidth: 1,

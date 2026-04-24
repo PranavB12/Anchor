@@ -432,39 +432,9 @@ def _row_to_response(row, net_votes: int = 0, user_vote: Optional[str] = None) -
         is_unlocked=bool(getattr(row, "is_unlocked", False)),
         content_type=content_type,
         tags=tags,
-<<<<<<< Updated upstream
         net_votes=int(getattr(row, "net_votes", 0) or 0),
         user_vote=getattr(row, "user_vote", None),
-    )
-    """
-    Convert a raw database row into an AnchorResponse schema object.
-    Tags are stored as a JSON string in the DB, so we parse them back into a list.
-    """
-    tags = _parse_tags(row.tags)
-    content_type = _parse_content_types(getattr(row, "content_type", None))
-    return AnchorResponse(
-        anchor_id=row.anchor_id,
-        creator_id=row.creator_id,
-        circle_id=getattr(row, "circle_id", None),
-        title=row.title,
-        description=row.description,
-        latitude=row.latitude,
-        longitude=row.longitude,
-        altitude=row.altitude,
-        status=row.status,
-        visibility=row.visibility,
-        unlock_radius=row.unlock_radius,
-        max_unlock=row.max_unlock,
-        current_unlock=row.current_unlock,
-        activation_time=row.activation_time,
-        expiration_time=row.expiration_time,
-        always_active=row.expiration_time is None,
-        is_unlocked=bool(getattr(row, "is_unlocked", False)),
-        content_type=content_type,
-        tags=tags,
-=======
         is_savable=bool(getattr(row, "is_savable", True)),
->>>>>>> Stashed changes
     )
 
 

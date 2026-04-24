@@ -44,6 +44,7 @@ export type CreateAnchorBody = {
   expiration_time?: string | null;
   always_active?: boolean;
   tags?: string[] | null;
+  is_savable?: boolean;
 };
 
 export type AnchorDraft = {
@@ -61,6 +62,7 @@ export type AnchorDraft = {
   expiration_time: string | null;
   always_active: boolean;
   tags: string[];
+  is_savable: boolean;
   attachment?: {
     uri: string;
     name: string;
