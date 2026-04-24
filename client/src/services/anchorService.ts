@@ -28,6 +28,7 @@ export type NearbyAnchor = {
   tags: string[] | null;
   net_votes: number;
   user_vote: "UPVOTE" | "DOWNVOTE" | null;
+  is_savable: boolean;
 };
 
 export type CreateAnchorBody = {

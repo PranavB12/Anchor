@@ -1495,6 +1495,22 @@ const handleVote = useCallback(
                 )}
 
                 {(() => {
+                  // US2 #4 — unsavable anchors hide the Save button entirely.
+                  // Creators see a muted "Unsavable" indicator instead so they can
+                  // tell it's flagged at a glance (they can still edit the flag).
+                  if (!selectedAnchor.is_savable) {
+                    if (selectedAnchor.creator_id === session?.user_id) {
+                      return (
+                        <View style={styles.unsavableBadge}>
+                          <Feather name="slash" size={13} color={colors.muted} />
+                          <Text style={styles.unsavableBadgeText}>
+                            Unsavable — others can't bookmark this
+                          </Text>
+                        </View>
+                      );
+                    }
+                    return null;
+                  }
                   const isSaved = savedAnchorIds.has(selectedAnchor.anchor_id);
                   const isSavingThis = savingAnchorId === selectedAnchor.anchor_id;
                   return (
@@ -2549,6 +2565,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.accentPink,
     borderRadius: 14,
+  },
+  unsavableBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    backgroundColor: "#f3f4f6",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  unsavableBadgeText: {
+    fontSize: 13,
+    color: colors.muted,
+    fontWeight: "600",
   },
   saveButtonActive: {
     backgroundColor: colors.accentPink,
